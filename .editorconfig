@@ -1,0 +1,42 @@
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 4
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# Kotlin — follows official Kotlin coding conventions
+# https://kotlinlang.org/docs/coding-conventions.html
+[*.{kt,kts}]
+max_line_length = 120
+
+# JSON — match existing manifest.json style
+[*.json]
+indent_size = 2
+
+# XML — standard for IDE and build tool config
+[*.xml]
+indent_size = 2
+
+# Properties — no indentation needed
+[*.properties]
+indent_size = unset
+
+# Markdown — trailing spaces are intentional (line breaks)
+[*.md]
+trim_trailing_whitespace = false
+
+# Gradle wrapper — generated files, preserve as-is
+[gradlew]
+indent_style = unset
+indent_size = unset
+end_of_line = unset
+
+[gradlew.bat]
+indent_style = unset
+indent_size = unset
+end_of_line = crlf

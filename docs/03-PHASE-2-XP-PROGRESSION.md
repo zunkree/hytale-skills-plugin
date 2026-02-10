@@ -314,16 +314,16 @@ override fun setup() {
 
 ## XP Gain Summary
 
-| Skill | Trigger | Base XP | Notes |
-|-------|---------|---------|-------|
-| Weapon skills | Deal damage | damage * 0.1 | Per hit |
-| Mining | Break ore/stone | 1.0 | Per block |
-| Woodcutting | Chop tree | 1.0 | Per block |
-| Running | Sprint | 0.1 | 1s cooldown |
-| Swimming | Swim | 0.1 | 1s cooldown |
-| Sneaking | Sneak | 0.1 | 1s cooldown |
-| Jumping | Jump | 0.5 | Per jump |
-| Blocking | Block damage | blocked * 0.05 | Per block |
+| Skill         | Trigger         | Base XP        | Notes       |
+|---------------|-----------------|----------------|-------------|
+| Weapon skills | Deal damage     | damage * 0.1   | Per hit     |
+| Mining        | Break ore/stone | 1.0            | Per block   |
+| Woodcutting   | Chop tree       | 1.0            | Per block   |
+| Running       | Sprint          | 0.1            | 1s cooldown |
+| Swimming      | Swim            | 0.1            | 1s cooldown |
+| Sneaking      | Sneak           | 0.1            | 1s cooldown |
+| Jumping       | Jump            | 0.5            | Per jump    |
+| Blocking      | Block damage    | blocked * 0.05 | Per block   |
 
 ---
 
@@ -343,9 +343,9 @@ Before implementing this phase, confirm the following APIs against actual Hytale
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| No XP gained | Verify event listeners are registered and firing |
-| XP spam | Increase cooldown timers |
-| Level up not showing | Check notification code, verify message API |
-| Wrong skill getting XP | Debug weapon/tool type detection |
+| Problem                | Solution                                         |
+|------------------------|--------------------------------------------------|
+| No XP gained           | Verify event listeners are registered and firing |
+| XP spam                | Increase cooldown timers                         |
+| Level up not showing   | Check notification code, verify message API      |
+| Wrong skill getting XP | Debug weapon/tool type detection                 |

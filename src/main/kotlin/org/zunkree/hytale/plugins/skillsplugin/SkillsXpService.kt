@@ -48,7 +48,6 @@ object SkillsXpService {
         }
 
         skillData.level = newLevel
-        SkillsManager.savePlayerSkills(playerRef, skills)
 
         return if (newLevel > oldLevel) {
             LevelUpResult(skillType, oldLevel, newLevel)

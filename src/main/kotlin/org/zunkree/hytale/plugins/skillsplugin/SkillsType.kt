@@ -6,6 +6,7 @@ enum class SkillsType(
 ) {
     // Weapon skills
     SWORDS("Swords", SkillsCategory.WEAPON),
+    DAGGERS("Daggers", SkillsCategory.WEAPON),
     AXES("Axes", SkillsCategory.WEAPON),
     BOWS("Bows", SkillsCategory.WEAPON),
     SPEARS("Spears", SkillsCategory.WEAPON),

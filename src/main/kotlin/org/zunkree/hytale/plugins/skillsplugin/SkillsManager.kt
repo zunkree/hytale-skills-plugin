@@ -2,6 +2,7 @@ package org.zunkree.hytale.plugins.skillsplugin
 
 import aster.amo.kytale.extension.componentType
 import aster.amo.kytale.extension.info
+import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.entity.entities.Player
@@ -28,6 +29,15 @@ object SkillsManager {
             }
         player.sendMessage(Message.raw("Saving skills..."))
         playerRef.store.putComponent(playerRef, componentType<SkillsComponent>(), skills)
+    }
+
+    fun savePlayerSkills(
+        playerRef: Ref<EntityStore>,
+        skills: SkillsComponent,
+        commandBuffer: CommandBuffer<EntityStore>
+    ) {
+        SkillsPlugin.instance.logger.info { "Saving player skills via command buffer to $playerRef" }
+        commandBuffer.putComponent(playerRef, componentType<SkillsComponent>(), skills)
     }
 
     fun getSkillLevel(playerRef: Ref<EntityStore>, skillType: SkillsType): Int {
