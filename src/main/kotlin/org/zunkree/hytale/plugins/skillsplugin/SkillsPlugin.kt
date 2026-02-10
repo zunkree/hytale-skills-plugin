@@ -11,6 +11,7 @@ import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.server.core.event.events.ShutdownEvent
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent
+import com.hypixel.hytale.server.core.asset.type.item.config.Item
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
@@ -73,6 +74,13 @@ class SkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
 
     override fun start() {
         super.start()
+
+        val allItems = Item.getAssetMap().getAssetMap()
+        val weaponItems = allItems.filter { (_, item) -> item.weapon != null }
+        weaponItems.forEach { (id, item) ->
+            logger.info { "Weapon: $id, categories: ${item.categories?.toList()}" }
+        }
+
         logger.info { "HytaleSkills started." }
     }
 
