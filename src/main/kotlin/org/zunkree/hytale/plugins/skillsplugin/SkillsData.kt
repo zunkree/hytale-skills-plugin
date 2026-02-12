@@ -6,7 +6,7 @@ import com.hypixel.hytale.codec.builder.BuilderCodec
 
 data class SkillsData(
     var level: Int = 0,
-    var totalXP: Float = 0f,
+    var totalXP: Double = 0.0,
 ) {
     companion object {
         const val MAX_LEVEL = 100
@@ -14,18 +14,19 @@ data class SkillsData(
             SkillsData::class.java,
             ::SkillsData
         )
-            .append(KeyedCodec("Level", Codec.INTEGER), {obj, value -> obj.level = value}, {it.level}).add()
-            .append(KeyedCodec("TotalXP", Codec.FLOAT), {obj, value -> obj.totalXP = value}, {it.totalXP}).add()
+            .append(KeyedCodec("Level", Codec.INTEGER), { obj, value -> obj.level = value }, { it.level }).add()
+            .append(KeyedCodec("TotalXP", Codec.DOUBLE), { obj, value -> obj.totalXP = value }, { it.totalXP }).add()
             .build()
     }
 
-    fun getLevelProgress(): Float {
-        if (level >= MAX_LEVEL) return 1f
+    val levelProgress: Double
+        get() {
+            if (level >= MAX_LEVEL) return 1.0
 
-        val xpForNext = SkillsXpCalculator.cumulativeXpForLevel(level + 1)
-        val xpForCurrent = SkillsXpCalculator.cumulativeXpForLevel(level)
-        val xpIntoLevel = totalXP - xpForCurrent
-        val xpNeeded = xpForNext - xpForCurrent
-        return (xpIntoLevel / xpNeeded).coerceIn(0f, 1f)
-    }
+            val xpForNext = SkillsXpCalculator.cumulativeXpForLevel(level + 1)
+            val xpForCurrent = SkillsXpCalculator.cumulativeXpForLevel(level)
+            val xpIntoLevel = totalXP - xpForCurrent
+            val xpNeeded = xpForNext - xpForCurrent
+            return (xpIntoLevel / xpNeeded).coerceIn(0.0, 1.0)
+        }
 }

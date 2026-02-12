@@ -40,8 +40,8 @@ fun handleSkillsCommand(ctx: CommandContext) {
                 append("No skills yet. Start playing to gain experience!")
             } else {
                 for ((skillName, skillData) in skills.skills) {
-                    logger.info { "Processing skill $skillName for ${player.displayName}: Level ${skillData.level}, Total XP ${skillData.totalXP}" }
-                    append("$skillName: Level ${skillData.level} (${(skillData.getLevelProgress() * 100).toInt()}% to next level)\n")
+                    logger.info { "Processing skill $skillName for ${player.displayName}: Level ${skillData.level}, Total XP ${skillData.totalXP}, Next: ${(skillData.levelProgress * 100).toInt()}%" }
+                    append("$skillName: Level ${skillData.level} (${(skillData.levelProgress * 100).toInt()}% to next level)\n")
                 }
             }
         }
