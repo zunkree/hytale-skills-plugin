@@ -1,8 +1,9 @@
 package org.zunkree.hytale.plugins.skillsplugin
 
 enum class SkillsCategory(val displayName: String) {
-    WEAPON("Weapon"),
-    UTILITY("Utility"),
+    COMBAT("Combat"),
     GATHERING("Gathering"),
     MOVEMENT("Movement"),
+    WEAPON("Weapon"),
+    UTILITY("Utility");
 }

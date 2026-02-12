@@ -7,26 +7,28 @@ data class SkillsConfig(
     val general: GeneralConfig = GeneralConfig(),
     val xp: XpConfig = XpConfig(),
     val deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
-    val skillEffects: Map<String, SkillEffectEntry> = defaultSkillEffects(),
+    val skillEffects: Map<SkillsType, SkillEffectEntry> = defaultSkillEffects(),
 ) {
     companion object {
-        fun defaultSkillEffects(): Map<String, SkillEffectEntry> = mapOf(
-            "SWORDS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "AXES" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "BOWS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "SPEARS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "CLUBS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "UNARMED" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "BLOCKING" to SkillEffectEntry(minBlockPower = 1.0f, maxBlockPower = 1.5f),
-            "MINING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            "WOODCUTTING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            "RUNNING" to SkillEffectEntry(
+        fun defaultSkillEffects(): Map<SkillsType, SkillEffectEntry> = mapOf(
+            SkillsType.SWORDS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.AXES to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.DAGGERS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.BOWS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.SPEARS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.CLUBS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.UNARMED to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillsType.BLOCKING to SkillEffectEntry(minBlockPower = 1.0f, maxBlockPower = 1.5f),
+            SkillsType.MINING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            SkillsType.WOODCUTTING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            SkillsType.RUNNING to SkillEffectEntry(
                 minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f,
                 minStaminaReduction = 0.0f, maxStaminaReduction = 0.33f
             ),
-            "SWIMMING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
-            "SNEAKING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
-            "JUMPING" to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f)
+            SkillsType.SWIMMING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+            SkillsType.DIVING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+            SkillsType.SNEAKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
+            SkillsType.JUMPING to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f),
         )
     }
 }
@@ -41,29 +43,30 @@ data class GeneralConfig(
 
 @Serializable
 data class XpConfig(
-    val baseXpPerAction: Float = 1.0f,
-    val xpScaleFactor: Float = 1.0f,
-    var restedBonusMultiplier: Float = 1.5f,
-    val globalXpMultiplier: Float = 1.0f,
+    val baseXpPerAction: Double = 1.0,
+    val xpScaleFactor: Double = 1.0,
+    var restedBonusMultiplier: Double = 1.5,
+    val globalXpMultiplier: Double = 1.0,
     val actionXp: ActionXpConfig = ActionXpConfig(),
 )
 
 @Serializable
 data class ActionXpConfig(
-    val combatDamageMultiplier: Float = 0.1f,
-    val miningPerBlockMultiplier: Float = 1.0f,
-    val woodcuttingPerBlockMultiplier: Float = 1.0f,
-    val runningPerSecondMultiplier: Float = 0.1f,
-    val swimmingPerSecondMultiplier: Float = 0.1f,
-    val sneakingPerSecondMultiplier: Float = 0.1f,
-    val jumpingPerJumpMultiplier: Float = 0.5f,
-    val blockingDamageMultiplier: Float = 0.05f,
+    val combatDamageMultiplier: Double = 0.1,
+    val miningPerBlockMultiplier: Double = 1.0,
+    val woodcuttingPerBlockMultiplier: Double = 1.0,
+    val runningPerDistanceMultiplier: Double = 0.1,
+    val swimmingPerDistanceMultiplier: Double = 0.1,
+    val sneakingPerSecondMultiplier: Double = 0.1,
+    val jumpingPerJumpMultiplier: Double = 0.5,
+    val blockingDamageMultiplier: Double = 0.05,
+    val divingPerSecondMultiplier: Double = 0.1,
 )
 
 @Serializable
 data class DeathPenaltyConfig(
     val enabled: Boolean = true,
-    val penaltyPercentage: Float = 0.1f,
+    val penaltyPercentage: Double = 0.1,
     val immunityDurationSeconds: Int = 300,
     val showImmunityInHud: Boolean = true,
 )

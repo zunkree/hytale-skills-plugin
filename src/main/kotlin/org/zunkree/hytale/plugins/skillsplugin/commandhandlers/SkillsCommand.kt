@@ -1,5 +1,6 @@
 package org.zunkree.hytale.plugins.skillsplugin.commandhandlers
 
+import aster.amo.kytale.extension.debug
 import aster.amo.kytale.extension.error
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.server.core.Message
@@ -39,13 +40,13 @@ fun handleSkillsCommand(ctx: CommandContext) {
             if (skills == null || skills.skills.isEmpty()) {
                 append("No skills yet. Start playing to gain experience!")
             } else {
-                for ((skillName, skillData) in skills.skills) {
-                    logger.info { "Processing skill $skillName for ${player.displayName}: Level ${skillData.level}, Total XP ${skillData.totalXP}" }
-                    append("$skillName: Level ${skillData.level} (${(skillData.getLevelProgress() * 100).toInt()}% to next level)\n")
+                for ((skillType, skillData) in skills.skills) {
+                    logger.debug { "Processing skill ${skillType.displayName} for ${player.displayName}: Level ${skillData.level}, Total XP ${skillData.totalXP}, Next: ${(skillData.levelProgress * 100).toInt()}%" }
+                    append("${skillType.displayName}: Level ${skillData.level} (${(skillData.levelProgress * 100).toInt()}% to next level)\n")
                 }
             }
         }
-        logger.info { "Sending skills message to ${player.displayName}" }
+        logger.debug { "Sending skills message to ${player.displayName}" }
         player.sendMessage(Message.raw(message.trim()))
     }
 }

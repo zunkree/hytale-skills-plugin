@@ -7,15 +7,9 @@ import com.hypixel.hytale.component.ComponentType
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 
 class SkillsComponent : Component<EntityStore> {
-    val skills: MutableMap<String, SkillsData> = mutableMapOf()
+    val skills: MutableMap<SkillsType, SkillsData> =
+        SkillsType.entries.associateWith { SkillsData() }.toMutableMap()
     var deathImmunityUntil: Long = 0L
-
-    init {
-        // Initialize all skills to default SkillData
-        for (skill in SkillsType.entries) {
-            skills[skill.name] = SkillsData()
-        }
-    }
 
     companion object {
         @JvmStatic
@@ -26,8 +20,8 @@ class SkillsComponent : Component<EntityStore> {
             for (skill in SkillsType.entries) {
                 builder.append(
                     KeyedCodec(skill.displayName, SkillsData.CODEC),
-                    { obj, value -> obj.skills[skill.name] = value },
-                    { it.skills[skill.name] ?: SkillsData() }).add()
+                    { obj, value -> obj.skills[skill] = value },
+                    { it.skills[skill] ?: SkillsData() }).add()
             }
             builder.build()
         }
@@ -42,19 +36,14 @@ class SkillsComponent : Component<EntityStore> {
         return clone
     }
 
-    fun getSkill(type: SkillsType): SkillsData {
-        return skills.getOrPut(type.name) { SkillsData() }
-    }
+    fun getSkill(type: SkillsType): SkillsData =
+        skills.getOrPut(type) { SkillsData() }
 
     fun setSkill(type: SkillsType, data: SkillsData) {
-        skills[type.name] = data
+        skills[type] = data
     }
 
-    fun getAllSkills(): Map<String, SkillsData> {
-        return skills.toMap()
-    }
+    val allSkills: Map<SkillsType, SkillsData> get() = skills.toMap()
 
-    fun getTotalLevels(): Int {
-        return skills.values.sumOf { it.level }
-    }
+    val totalLevels: Int get() = skills.values.sumOf { it.level }
 }

@@ -2,23 +2,26 @@ package org.zunkree.hytale.plugins.skillsplugin
 
 enum class SkillsType(
     val displayName: String,
-    val category: SkillsCategory
+    val categories: Set<SkillsCategory>
 ) {
-    // Weapon skills
-    SWORDS("Swords", SkillsCategory.WEAPON),
-    DAGGERS("Daggers", SkillsCategory.WEAPON),
-    AXES("Axes", SkillsCategory.WEAPON),
-    BOWS("Bows", SkillsCategory.WEAPON),
-    SPEARS("Spears", SkillsCategory.WEAPON),
-    CLUBS("Clubs", SkillsCategory.WEAPON),
-    UNARMED("Unarmed", SkillsCategory.WEAPON),
+    // Combat skills
+    SWORDS("Swords", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    DAGGERS("Daggers", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    AXES("Axes", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    BOWS("Bows", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    SPEARS("Spears", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    CLUBS("Clubs", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    UNARMED("Unarmed", setOf(SkillsCategory.COMBAT, SkillsCategory.WEAPON)),
+    BLOCKING("Blocking", setOf(SkillsCategory.COMBAT, SkillsCategory.UTILITY)),
 
-    // Utility skills
-    BLOCKING("Blocking", SkillsCategory.UTILITY),
-    MINING("Mining", SkillsCategory.GATHERING),
-    WOODCUTTING("Woodcutting", SkillsCategory.GATHERING),
-    RUNNING("Running", SkillsCategory.MOVEMENT),
-    SWIMMING("Swimming", SkillsCategory.MOVEMENT),
-    SNEAKING("Sneaking", SkillsCategory.MOVEMENT),
-    JUMPING("Jumping", SkillsCategory.MOVEMENT);
+    // Gathering skills
+    MINING("Mining", setOf(SkillsCategory.GATHERING)),
+    WOODCUTTING("Woodcutting", setOf(SkillsCategory.GATHERING)),
+
+    // Movement skills
+    SWIMMING("Swimming", setOf(SkillsCategory.MOVEMENT)),
+    RUNNING("Running", setOf(SkillsCategory.MOVEMENT)),
+    DIVING("Diving", setOf(SkillsCategory.MOVEMENT)),
+    SNEAKING("Sneaking", setOf(SkillsCategory.MOVEMENT)),
+    JUMPING("Jumping", setOf(SkillsCategory.MOVEMENT));
 }

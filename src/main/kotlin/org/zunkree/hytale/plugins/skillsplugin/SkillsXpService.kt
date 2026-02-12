@@ -2,6 +2,7 @@ package org.zunkree.hytale.plugins.skillsplugin
 
 import aster.amo.kytale.extension.componentType
 import aster.amo.kytale.extension.info
+import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.entity.entities.Player
@@ -18,7 +19,7 @@ object SkillsXpService {
     fun grantXp(
         playerRef: Ref<EntityStore>,
         skillType: SkillsType,
-        baseXp: Float,
+        baseXp: Double,
         isRested: Boolean = false
     ): LevelUpResult? {
         val skills = SkillsManager.getPlayerSkills(playerRef)
@@ -56,7 +57,22 @@ object SkillsXpService {
         }
     }
 
+    fun grantXpAndSave(
+        playerRef: Ref<EntityStore>,
+        skillType: SkillsType,
+        baseXp: Double,
+        commandBuffer: CommandBuffer<EntityStore>,
+        isRested: Boolean = false
+    ) {
+        val result = grantXp(playerRef, skillType, baseXp, isRested) ?: return
+        val skills = SkillsManager.getPlayerSkills(playerRef) ?: return
+        SkillsManager.savePlayerSkills(playerRef, skills, commandBuffer)
+        notifyLevelUp(playerRef, result)
+    }
+
     fun notifyLevelUp(playerRef: Ref<EntityStore>, result: LevelUpResult) {
+        if (!SkillsPlugin.instance.config.general.showLevelUpNotifications) return
+
         val player = playerRef.store.getComponent(playerRef, componentType<Player>())
             ?: run {
                 SkillsPlugin.instance.logger.info { "Failed to load player entity from ${playerRef.store}" }

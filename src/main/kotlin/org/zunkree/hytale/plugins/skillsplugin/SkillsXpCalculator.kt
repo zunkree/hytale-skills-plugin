@@ -4,21 +4,14 @@ object SkillsXpCalculator {
 
     private val config get() = SkillsPlugin.instance.config.xp
 
-    fun xpRequiredForLevel(level: Int): Float {
-        return config.baseXpPerAction * 100f * (1 + (level - 1) * config.xpScaleFactor)
-    }
+    fun xpRequiredForLevel(level: Int): Double =
+        config.baseXpPerAction * 100.0 * (1 + (level - 1) * config.xpScaleFactor)
 
-    fun cumulativeXpForLevel(level: Int): Float {
-        var total = 0f
-        for (i in 1..level) {
-            total += xpRequiredForLevel(i)
-        }
-        return total
-    }
+    fun cumulativeXpForLevel(level: Int): Double =
+        (1..level).fold(0.0) { acc, i -> acc + xpRequiredForLevel(i) }
 
-    fun calculateXpGain(baseXp: Float, isRested: Boolean): Float {
-        val restedBonus = config.restedBonusMultiplier - 1f
-        val multiplier = if (isRested) 1f + restedBonus else 1f
+    fun calculateXpGain(baseXp: Double, isRested: Boolean): Double {
+        val multiplier = if (isRested) config.restedBonusMultiplier else 1.0
         return baseXp * multiplier * config.globalXpMultiplier
     }
 }
