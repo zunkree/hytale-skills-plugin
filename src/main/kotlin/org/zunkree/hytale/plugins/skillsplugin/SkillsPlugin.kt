@@ -3,14 +3,21 @@ package org.zunkree.hytale.plugins.skillsplugin
 import aster.amo.hexweave.enableHexweave
 import aster.amo.kytale.KotlinPlugin
 import aster.amo.kytale.dsl.jsonConfig
+import aster.amo.kytale.extension.componentType
 import aster.amo.kytale.extension.info
+import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
 import com.hypixel.hytale.server.core.asset.type.item.config.Item
+import com.hypixel.hytale.server.core.event.events.ecs.DamageBlockEvent
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
+import com.hypixel.hytale.server.core.universe.PlayerRef
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfig
 import org.zunkree.hytale.plugins.skillsplugin.listener.BlockingListener
 import org.zunkree.hytale.plugins.skillsplugin.listener.CombatListener
+import org.zunkree.hytale.plugins.skillsplugin.listener.HarvestListener
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
+import org.zunkree.hytale.plugins.skillsplugin.resolver.BlockSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpCurve
@@ -42,8 +49,10 @@ class SkillsPlugin(
         val xpService = XpService(skillRepository, xpCurve, config.general, logger)
         val actionXpConfig = config.xp.actionXp
         val weaponSkillResolver = WeaponSkillResolver()
+        val blockSkillResolver = BlockSkillResolver()
 
         val combatListener = CombatListener(xpService, actionXpConfig, weaponSkillResolver, logger)
+        val harvestListener = HarvestListener(xpService, actionXpConfig, blockSkillResolver, logger)
         val blockingListener = BlockingListener(xpService, actionXpConfig, logger)
 
         enableHexweave {
@@ -55,6 +64,12 @@ class SkillsPlugin(
                         combatListener.onPlayerDealDamage(this)
                         blockingListener.onPlayerBlock(this)
                     }
+                }
+
+                entityEventSystem<EntityStore, DamageBlockEvent>("skills-gathering-xp") {
+                    query { componentType<PlayerRef>() }
+                    filter { it.blockType != BlockType.EMPTY }
+                    onEvent { harvestListener.onPlayerDamageBlock(this) }
                 }
             }
         }
