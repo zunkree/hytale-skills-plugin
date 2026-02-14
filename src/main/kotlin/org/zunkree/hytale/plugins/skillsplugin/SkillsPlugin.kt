@@ -1,12 +1,17 @@
 package org.zunkree.hytale.plugins.skillsplugin
 
+import aster.amo.hexweave.enableHexweave
 import aster.amo.kytale.KotlinPlugin
 import aster.amo.kytale.dsl.jsonConfig
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.server.core.asset.type.item.config.Item
+import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
 import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfig
+import org.zunkree.hytale.plugins.skillsplugin.listener.BlockingListener
+import org.zunkree.hytale.plugins.skillsplugin.listener.CombatListener
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
+import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpCurve
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
@@ -35,6 +40,24 @@ class SkillsPlugin(
         val xpCurve = XpCurve(config.xp)
         skillRepository = SkillRepository(logger)
         val xpService = XpService(skillRepository, xpCurve, config.general, logger)
+        val actionXpConfig = config.xp.actionXp
+        val weaponSkillResolver = WeaponSkillResolver()
+
+        val combatListener = CombatListener(xpService, actionXpConfig, weaponSkillResolver, logger)
+        val blockingListener = BlockingListener(xpService, actionXpConfig, logger)
+
+        enableHexweave {
+            systems {
+                damageSystem("skills-combat-xp") {
+                    dependencies { after<DamageSystems.ApplyDamage>() }
+                    filter { !it.isCancelled }
+                    onDamage {
+                        combatListener.onPlayerDealDamage(this)
+                        blockingListener.onPlayerBlock(this)
+                    }
+                }
+            }
+        }
 
         PlayerSkillsComponent.componentType =
             entityStoreRegistry.registerComponent(
