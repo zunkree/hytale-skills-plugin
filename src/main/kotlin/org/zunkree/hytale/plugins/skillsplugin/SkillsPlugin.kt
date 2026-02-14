@@ -2,12 +2,14 @@ package org.zunkree.hytale.plugins.skillsplugin
 
 import aster.amo.hexweave.enableHexweave
 import aster.amo.kytale.KotlinPlugin
+import aster.amo.kytale.dsl.event
 import aster.amo.kytale.dsl.jsonConfig
 import aster.amo.kytale.extension.componentType
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
 import com.hypixel.hytale.server.core.asset.type.item.config.Item
 import com.hypixel.hytale.server.core.event.events.ecs.DamageBlockEvent
+import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
 import com.hypixel.hytale.server.core.universe.PlayerRef
@@ -16,8 +18,10 @@ import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfig
 import org.zunkree.hytale.plugins.skillsplugin.listener.BlockingListener
 import org.zunkree.hytale.plugins.skillsplugin.listener.CombatListener
 import org.zunkree.hytale.plugins.skillsplugin.listener.HarvestListener
+import org.zunkree.hytale.plugins.skillsplugin.listener.MovementListener
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.resolver.BlockSkillResolver
+import org.zunkree.hytale.plugins.skillsplugin.resolver.MovementXpPolicy
 import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpCurve
@@ -50,10 +54,16 @@ class SkillsPlugin(
         val actionXpConfig = config.xp.actionXp
         val weaponSkillResolver = WeaponSkillResolver()
         val blockSkillResolver = BlockSkillResolver()
+        val movementXpPolicy = MovementXpPolicy(actionXpConfig)
 
         val combatListener = CombatListener(xpService, actionXpConfig, weaponSkillResolver, logger)
         val harvestListener = HarvestListener(xpService, actionXpConfig, blockSkillResolver, logger)
+        val movementListener = MovementListener(xpService, movementXpPolicy, logger)
         val blockingListener = BlockingListener(xpService, actionXpConfig, logger)
+
+        event<PlayerDisconnectEvent> { event ->
+            movementListener.onPlayerDisconnect(event)
+        }
 
         enableHexweave {
             systems {
@@ -70,6 +80,11 @@ class SkillsPlugin(
                     query { componentType<PlayerRef>() }
                     filter { it.blockType != BlockType.EMPTY }
                     onEvent { harvestListener.onPlayerDamageBlock(this) }
+                }
+
+                tickSystem("skills-movement-xp") {
+                    query { componentType<PlayerRef>() }
+                    onTick { movementListener.onTick(this) }
                 }
             }
         }
