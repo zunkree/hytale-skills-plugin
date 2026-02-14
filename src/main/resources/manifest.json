@@ -1,0 +1,14 @@
+{
+    "Group": "${group}",
+    "Name": "skillsplugin",
+    "Version": "${version}",
+    "Main": "${main}",
+    "Description": "${description}",
+    "Authors": [{"Name": "zunkree"}],
+    "Dependencies": {
+        "AmoAster:Kytale": "*"
+    },
+    "OptionalDependencies": {},
+    "DisabledByDefault": false,
+    "IncludesAssetPack": false
+}
