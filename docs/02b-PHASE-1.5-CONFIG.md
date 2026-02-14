@@ -1,0 +1,216 @@
+# Phase 1.5 — Configuration System
+
+## Goal
+Establish the configuration system so all subsequent phases can read tunable values from config instead of hardcoding constants. This is a lightweight phase focused on loading config and providing defaults — the admin reload command is deferred to Phase 6.
+
+## Prerequisites
+- Phase 1 complete (skill data model working)
+
+## Done Criteria
+- [ ] `SkillsConfig` data classes defined with sensible defaults
+- [ ] `config.json` generated on first run with default values
+- [ ] Config values accessible from plugin code via `jsonConfig`
+- [ ] All tunable values (XP rates, penalties, effect multipliers) centralized in config
+
+---
+
+## Tasks
+
+### Task 1.5.1 — Research config API
+
+Before implementing, confirm:
+- [ ] `jsonConfig` DSL from Kytale — how to declare, load, and access config
+- [ ] Config file location (e.g., `config/skillsplugin/config.json`)
+- [ ] Auto-generation of default config on first run
+- [ ] Reload mechanism (for Phase 6 admin command)
+
+### Task 1.5.2 — Create `SkillsConfig.kt`
+
+```kotlin
+package org.zunkree.hytale.plugins.skillsplugin.config
+
+// TODO: Research actual Kytale config API — jsonConfig usage is pseudo-code
+import aster.amo.kytale.config.jsonConfig
+
+data class SkillsConfig(
+    val general: GeneralConfig = GeneralConfig(),
+    val xp: XpConfig = XpConfig(),
+    val deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
+    val skillEffects: Map<String, SkillEffectEntry> = defaultSkillEffects()
+) {
+    companion object {
+        fun defaultSkillEffects(): Map<String, SkillEffectEntry> = mapOf(
+            "SWORDS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "AXES" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "BOWS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "SPEARS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "CLUBS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "UNARMED" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            "BLOCKING" to SkillEffectEntry(minBlockPower = 1.0f, maxBlockPower = 1.5f),
+            "MINING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            "WOODCUTTING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            "RUNNING" to SkillEffectEntry(
+                minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f,
+                minStaminaReduction = 0.0f, maxStaminaReduction = 0.33f
+            ),
+            "SWIMMING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+            "SNEAKING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
+            "JUMPING" to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f)
+        )
+    }
+}
+
+data class GeneralConfig(
+    val maxSkillLevel: Int = 100,
+    val showLevelUpNotifications: Boolean = true,
+    val showXpGainNotifications: Boolean = false,
+    val debugLogging: Boolean = false
+)
+
+data class XpConfig(
+    val baseXpPerAction: Float = 1.0f,
+    val xpScaleFactor: Float = 0.1f,
+    val restedBonusMultiplier: Float = 1.5f,
+    val globalXpMultiplier: Float = 1.0f,
+    val actionXp: ActionXpConfig = ActionXpConfig()
+)
+
+data class ActionXpConfig(
+    val combatDamageMultiplier: Float = 0.1f,
+    val miningPerBlock: Float = 1.0f,
+    val woodcuttingPerBlock: Float = 1.0f,
+    val runningPerSecond: Float = 0.1f,
+    val swimmingPerSecond: Float = 0.1f,
+    val sneakingPerSecond: Float = 0.1f,
+    val jumpingPerJump: Float = 0.5f,
+    val blockingDamageMultiplier: Float = 0.05f
+)
+
+data class DeathPenaltyConfig(
+    val enabled: Boolean = true,
+    val penaltyPercent: Float = 0.05f,
+    val immunityDurationSeconds: Int = 600,
+    val showImmunityInHud: Boolean = true
+)
+
+data class SkillEffectEntry(
+    val minDamage: Float? = null,
+    val maxDamage: Float? = null,
+    val minBlockPower: Float? = null,
+    val maxBlockPower: Float? = null,
+    val minSpeed: Float? = null,
+    val maxSpeed: Float? = null,
+    val minSpeedBonus: Float? = null,
+    val maxSpeedBonus: Float? = null,
+    val minStaminaReduction: Float? = null,
+    val maxStaminaReduction: Float? = null,
+    val minHeight: Float? = null,
+    val maxHeight: Float? = null
+)
+```
+
+### Task 1.5.3 — Register config in plugin
+
+```kotlin
+// In HytaleSkillsPlugin.kt
+class HytaleSkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
+
+    // TODO: Research actual jsonConfig API
+    val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }
+
+    override fun setup() {
+        super.setup()
+        instance = this
+
+        val version = pluginVersion()
+        logger.info { "HytaleSkills v$version loading..." }
+        logger.info { "Config loaded: maxLevel=${config.general.maxSkillLevel}, deathPenalty=${config.deathPenalty.enabled}" }
+
+        // ... rest of setup
+    }
+}
+```
+
+### Task 1.5.4 — Create default `config.json`
+
+Place in `src/main/resources/config.json` (or wherever Kytale expects it):
+
+```json
+{
+    "general": {
+        "maxSkillLevel": 100,
+        "showLevelUpNotifications": true,
+        "showXpGainNotifications": false,
+        "debugLogging": false
+    },
+    "xp": {
+        "baseXpPerAction": 1.0,
+        "xpScaleFactor": 0.1,
+        "restedBonusMultiplier": 1.5,
+        "globalXpMultiplier": 1.0,
+        "actionXp": {
+            "combatDamageMultiplier": 0.1,
+            "miningPerBlock": 1.0,
+            "woodcuttingPerBlock": 1.0,
+            "runningPerSecond": 0.1,
+            "swimmingPerSecond": 0.1,
+            "sneakingPerSecond": 0.1,
+            "jumpingPerJump": 0.5,
+            "blockingDamageMultiplier": 0.05
+        }
+    },
+    "deathPenalty": {
+        "enabled": true,
+        "penaltyPercent": 0.05,
+        "immunityDurationSeconds": 600,
+        "showImmunityInHud": true
+    },
+    "skillEffects": {
+        "SWORDS": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "AXES": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "BOWS": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "SPEARS": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "CLUBS": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "UNARMED": { "minDamage": 1.0, "maxDamage": 2.0 },
+        "BLOCKING": { "minBlockPower": 1.0, "maxBlockPower": 1.5 },
+        "MINING": { "minSpeed": 1.0, "maxSpeed": 1.5 },
+        "WOODCUTTING": { "minSpeed": 1.0, "maxSpeed": 1.5 },
+        "RUNNING": {
+            "minSpeedBonus": 0.0, "maxSpeedBonus": 0.25,
+            "minStaminaReduction": 0.0, "maxStaminaReduction": 0.33
+        },
+        "SWIMMING": { "minStaminaReduction": 0.0, "maxStaminaReduction": 0.5 },
+        "SNEAKING": { "minStaminaReduction": 0.0, "maxStaminaReduction": 0.75 },
+        "JUMPING": { "minHeight": 1.0, "maxHeight": 1.5 }
+    }
+}
+```
+
+### Task 1.5.5 — Verify config loading
+
+1. Start server — `config.json` should be generated with defaults
+2. Modify a value (e.g., `maxSkillLevel: 50`)
+3. Restart server — verify the modified value is loaded
+4. Verify log output shows correct config values
+
+---
+
+## Research Required
+
+Before implementing this phase, confirm:
+
+- [ ] **`jsonConfig` DSL** — Exact Kytale API for declaring JSON-backed config with defaults
+- [ ] **Config file path** — Where Kytale places plugin config files at runtime
+- [ ] **Default generation** — Whether Kytale auto-generates the file from the data class defaults
+- [ ] **Reload support** — Whether `jsonConfig` supports runtime reload (needed for Phase 6 admin command)
+
+---
+
+## Troubleshooting
+
+| Problem                          | Solution                                            |
+|----------------------------------|-----------------------------------------------------|
+| Config not loading               | Check file path, verify JSON syntax                 |
+| Defaults not applied             | Ensure data class has default values for all fields |
+| Missing fields in JSON           | Verify deserializer uses defaults for absent fields |
+| Config changes not taking effect | Restart server (hot-reload is Phase 6)              |
