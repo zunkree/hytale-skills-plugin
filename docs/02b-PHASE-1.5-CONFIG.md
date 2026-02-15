@@ -38,26 +38,30 @@ data class SkillsConfig(
     val general: GeneralConfig = GeneralConfig(),
     val xp: XpConfig = XpConfig(),
     val deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
-    val skillEffects: Map<String, SkillEffectEntry> = defaultSkillEffects()
+    val skillEffects: Map<SkillType, SkillEffectEntry> = defaultSkillEffects()
 ) {
     companion object {
-        fun defaultSkillEffects(): Map<String, SkillEffectEntry> = mapOf(
-            "SWORDS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "AXES" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "BOWS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "SPEARS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "CLUBS" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "UNARMED" to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            "BLOCKING" to SkillEffectEntry(minBlockPower = 1.0f, maxBlockPower = 1.5f),
-            "MINING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            "WOODCUTTING" to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            "RUNNING" to SkillEffectEntry(
+        fun defaultSkillEffects(): Map<SkillType, SkillEffectEntry> = mapOf(
+            SkillType.SWORDS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.AXES to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.DAGGERS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.BOWS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.SPEARS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.CLUBS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.UNARMED to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
+            SkillType.BLOCKING to SkillEffectEntry(
+                minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f
+            ),
+            SkillType.MINING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            SkillType.WOODCUTTING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
+            SkillType.RUNNING to SkillEffectEntry(
                 minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f,
                 minStaminaReduction = 0.0f, maxStaminaReduction = 0.33f
             ),
-            "SWIMMING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
-            "SNEAKING" to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
-            "JUMPING" to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f)
+            SkillType.SWIMMING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+            SkillType.DIVING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+            SkillType.SNEAKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
+            SkillType.JUMPING to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f)
         )
     }
 }
@@ -99,8 +103,6 @@ data class DeathPenaltyConfig(
 data class SkillEffectEntry(
     val minDamage: Float? = null,
     val maxDamage: Float? = null,
-    val minBlockPower: Float? = null,
-    val maxBlockPower: Float? = null,
     val minSpeed: Float? = null,
     val maxSpeed: Float? = null,
     val minSpeedBonus: Float? = null,
@@ -175,7 +177,9 @@ Place in `src/main/resources/config.json` (or wherever Kytale expects it):
         "SPEARS": { "minDamage": 1.0, "maxDamage": 2.0 },
         "CLUBS": { "minDamage": 1.0, "maxDamage": 2.0 },
         "UNARMED": { "minDamage": 1.0, "maxDamage": 2.0 },
-        "BLOCKING": { "minBlockPower": 1.0, "maxBlockPower": 1.5 },
+        "BLOCKING": {
+            "minStaminaReduction": 0.0, "maxStaminaReduction": 0.5
+        },
         "MINING": { "minSpeed": 1.0, "maxSpeed": 1.5 },
         "WOODCUTTING": { "minSpeed": 1.0, "maxSpeed": 1.5 },
         "RUNNING": {

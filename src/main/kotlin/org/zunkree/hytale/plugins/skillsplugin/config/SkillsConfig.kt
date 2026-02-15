@@ -20,7 +20,7 @@ data class SkillsConfig(
                 SkillType.SPEARS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
                 SkillType.CLUBS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
                 SkillType.UNARMED to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-                SkillType.BLOCKING to SkillEffectEntry(minBlockPower = 1.0f, maxBlockPower = 1.5f),
+                SkillType.BLOCKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
                 SkillType.MINING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
                 SkillType.WOODCUTTING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
                 SkillType.RUNNING to
@@ -30,8 +30,8 @@ data class SkillsConfig(
                         minStaminaReduction = 0.0f,
                         maxStaminaReduction = 0.33f,
                     ),
-                SkillType.SWIMMING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
-                SkillType.DIVING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
+                SkillType.SWIMMING to SkillEffectEntry(minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f),
+                SkillType.DIVING to SkillEffectEntry(minOxygenBonus = 0.0f, maxOxygenBonus = 1.0f),
                 SkillType.SNEAKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
                 SkillType.JUMPING to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f),
             )
@@ -43,14 +43,13 @@ data class GeneralConfig(
     val maxLevel: Int = 100,
     val showLevelUpNotifications: Boolean = true,
     val showXpGainNotifications: Boolean = false,
-    var debugLogging: Boolean = false,
 )
 
 @Serializable
 data class XpConfig(
     val baseXpPerAction: Double = 1.0,
     val xpScaleFactor: Double = 1.0,
-    var restedBonusMultiplier: Double = 1.5,
+    val restedBonusMultiplier: Double = 1.5,
     val globalXpMultiplier: Double = 1.0,
     val actionXp: ActionXpConfig = ActionXpConfig(),
 )
@@ -80,8 +79,6 @@ data class DeathPenaltyConfig(
 data class SkillEffectEntry(
     val minDamage: Float? = null,
     val maxDamage: Float? = null,
-    val minBlockPower: Float? = null,
-    val maxBlockPower: Float? = null,
     val minSpeed: Float? = null,
     val maxSpeed: Float? = null,
     val minSpeedBonus: Float? = null,
@@ -90,4 +87,6 @@ data class SkillEffectEntry(
     val maxStaminaReduction: Float? = null,
     val minHeight: Float? = null,
     val maxHeight: Float? = null,
+    val minOxygenBonus: Float? = null,
+    val maxOxygenBonus: Float? = null,
 )

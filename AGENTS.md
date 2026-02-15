@@ -56,6 +56,7 @@ A Hytale server plugin implementing a Valheim-inspired skill progression system.
 
 See `docs/00-PROJECT-OVERVIEW.md` for full roadmap. Target structure:
 - `skill/` - SkillType, SkillData, PlayerSkillsComponent, SkillManager
+- `system/` - Custom DamageEventSystem subclasses (SkillEffectDamageSystem, CombatXpDamageSystem, DamageContext)
 - `effect/` - Skill effect modifiers (damage, stamina, speed)
 - `listener/` - Event listeners for XP gain and death penalty
 - `ui/` - Skills menu UI

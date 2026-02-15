@@ -29,7 +29,7 @@ class PlayerSkillsComponent : Component<EntityStore> {
                 }
                 builder
                     .append(
-                        KeyedCodec("deathImmunityUntil", Codec.LONG),
+                        KeyedCodec("DeathImmunityUntil", Codec.LONG),
                         { obj, value -> obj.deathImmunityUntil = value },
                         { it.deathImmunityUntil },
                     ).add()

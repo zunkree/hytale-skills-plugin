@@ -44,7 +44,7 @@ val xpService = XpService(skillRepository, xpCurve, config.general, logger)
 
 ## Consequences
 
-- `SkillsPlugin.instance` appears only in `SkillsPlugin.kt` (declaration + assignment).
+- `SkillsPlugin.instance` has been removed entirely.
 - Pure domain classes (`XpCurve`, resolvers, policies) are testable with zero mocking.
 - Adding a new dependency to a class is a compiler error at the composition root — impossible to forget wiring.
 - No framework dependency for DI. No runtime overhead.

@@ -29,15 +29,15 @@ Based on research from [Game8 Valheim Guide](https://game8.co/games/Valheim/arch
 - **No skill drain immunity**: 10-minute protection after death prevents repeated losses
 
 ### Skill Effects at Max Level (100)
-| Skill Type | Bonus |
-|------------|-------|
-| Weapon skills (Swords, Axes, etc.) | 2x damage multiplier |
-| Blocking | 1.5x block power |
-| Bows | 2x damage + instant draw |
-| Run | 25% speed increase + 33% stamina reduction |
-| Swim | 50% stamina reduction |
-| Sneak | 75% stamina reduction + near-invisibility |
-| Jump | 1.5x height increase |
+| Skill Type                         | Bonus                                      |
+|------------------------------------|--------------------------------------------|
+| Weapon skills (Swords, Axes, etc.) | 2x damage multiplier                       |
+| Blocking                           | 50% stamina reduction                      |
+| Bows                               | 2x damage + instant draw                   |
+| Run                                | 25% speed increase + 33% stamina reduction |
+| Swim                               | 50% stamina reduction                      |
+| Sneak                              | 75% stamina reduction + near-invisibility  |
+| Jump                               | 1.5x height increase                       |
 
 ### Valheim Skills List
 **Weapon Skills**: Axes, Bows, Clubs, Knives, Pickaxes, Polearms, Spears, Swords, Unarmed
@@ -46,23 +46,23 @@ Based on research from [Game8 Valheim Guide](https://game8.co/games/Valheim/arch
 ## Hytale Adaptation
 
 ### Hytale Skills (15 total)
-| Skill | Category | Trigger | Effect |
-|-------|----------|---------|--------|
-| **Swords** | Weapon | Deal damage with sword/longsword | +damage (up to 2x) |
-| **Daggers** | Weapon | Deal damage with daggers | +damage (up to 2x) |
-| **Axes** | Weapon | Deal damage with axe/battleaxe | +damage (up to 2x) |
-| **Bows** | Weapon | Deal damage with shortbow/crossbow | +damage, -draw time |
-| **Spears** | Weapon | Deal damage with spear | +damage (up to 2x) |
-| **Clubs** | Weapon | Deal damage with mace/club | +damage (up to 2x) |
-| **Unarmed** | Weapon | Deal damage without weapon | +damage (up to 2x) |
-| **Blocking** | Utility | Block incoming damage | +block power (up to 1.5x) |
-| **Mining** | Gathering | Damage ore/stone blocks | +mining speed, -stamina |
-| **Woodcutting** | Gathering | Damage wood blocks | +chopping speed, -stamina |
-| **Running** | Movement | Sprint | +speed, -stamina drain |
-| **Swimming** | Movement | Swim | +swim speed, -stamina drain |
-| **Diving** | Movement | Submerge in fluid | +oxygen capacity |
-| **Sneaking** | Movement | Crouch while moving | -detection, -stamina |
-| **Jumping** | Movement | Jump | +height |
+| Skill           | Category  | Trigger                            | Effect                             |
+|-----------------|-----------|------------------------------------|------------------------------------|
+| **Swords**      | Weapon    | Deal damage with sword/longsword   | +damage (up to 2x)                 |
+| **Daggers**     | Weapon    | Deal damage with daggers           | +damage (up to 2x)                 |
+| **Axes**        | Weapon    | Deal damage with axe/battleaxe     | +damage (up to 2x)                 |
+| **Bows**        | Weapon    | Deal damage with shortbow/crossbow | +damage, -draw time                |
+| **Spears**      | Weapon    | Deal damage with spear             | +damage (up to 2x)                 |
+| **Clubs**       | Weapon    | Deal damage with mace/club         | +damage (up to 2x)                 |
+| **Unarmed**     | Weapon    | Deal damage without weapon         | +damage (up to 2x)                 |
+| **Blocking**    | Utility   | Block incoming damage              | -blocking stamina cost (up to 50%) |
+| **Mining**      | Gathering | Damage ore/stone blocks            | +mining speed, -stamina            |
+| **Woodcutting** | Gathering | Damage wood blocks                 | +chopping speed, -stamina          |
+| **Running**     | Movement  | Sprint                             | +speed, -stamina drain             |
+| **Swimming**    | Movement  | Swim                               | +swim speed, -stamina drain        |
+| **Diving**      | Movement  | Submerge in fluid                  | +oxygen capacity                   |
+| **Sneaking**    | Movement  | Crouch while moving                | -detection, -stamina               |
+| **Jumping**     | Movement  | Jump                               | +height                            |
 
 ### Key Differences from Valheim
 - Hytale uses an ECS architecture — skills stored as persistent components on players
@@ -143,9 +143,13 @@ skillsplugin/
 │   │   │   ├── WeaponSkillResolver.kt   # Item ID prefix → SkillType
 │   │   │   ├── BlockSkillResolver.kt    # Block ID prefix → Mining/Woodcutting
 │   │   │   └── MovementXpPolicy.kt      # Movement state → XP grants
+│   │   ├── system/
+│   │   │   ├── DamageContext.kt         # Data class for damage system context
+│   │   │   ├── SkillEffectDamageSystem.kt # DamageEventSystem: effects (before ApplyDamage)
+│   │   │   └── CombatXpDamageSystem.kt  # DamageEventSystem: XP grants (after ApplyDamage)
 │   │   ├── listener/
-│   │   │   ├── CombatListener.kt        # Hexweave damage system for weapon XP
-│   │   │   ├── BlockingListener.kt      # Hexweave damage system for blocking XP
+│   │   │   ├── CombatListener.kt        # Weapon XP from damage dealt
+│   │   │   ├── BlockingListener.kt      # Blocking XP from damage blocked
 │   │   │   ├── HarvestListener.kt       # DamageBlockEvent for gathering XP
 │   │   │   ├── MovementListener.kt      # Tick-based movement XP tracking
 │   │   │   └── PlayerLifecycleListener.kt # PlayerReady/Disconnect → load/save
@@ -160,16 +164,16 @@ skillsplugin/
 ```
 
 ## Phase Summary
-| Phase | Goal | Depends On | Deliverable |
-|-------|------|------------|-------------|
-| 0 | Project setup + hello world | Nothing | Compiling plugin, `/skills` command works | **Done** |
-| 1 | Skill data model + persistence | Phase 0 | SkillType enum, PlayerSkillsComponent, save/load | **Done** |
-| 1.5 | Configuration system | Phase 1 | SkillsConfig, config.json, tunable values available | **Done** |
-| 2 | XP gain + leveling | Phase 1.5 | Gain XP from actions, level up with notifications | **Done** |
-| 3 | Skill effects | Phase 2 | Damage/stamina bonuses applied based on skill level | Not started |
-| 4 | Death penalty | Phase 3 | Skill loss on death, immunity period | Not started |
-| 5 | Skills UI | Phase 4 | `/skills` opens menu showing all skills + levels | Not started |
-| 6 | Polish + admin + release | Phase 5 | Admin commands, performance optimization, CurseForge release | Not started |
+| Phase | Goal                           | Depends On | Deliverable                                                  |
+|-------|--------------------------------|------------|--------------------------------------------------------------|
+| 0     | Project setup + hello world    | Nothing    | Compiling plugin, `/skills` command works                    | **Done** |
+| 1     | Skill data model + persistence | Phase 0    | SkillType enum, PlayerSkillsComponent, save/load             | **Done** |
+| 1.5   | Configuration system           | Phase 1    | SkillsConfig, config.json, tunable values available          | **Done** |
+| 2     | XP gain + leveling             | Phase 1.5  | Gain XP from actions, level up with notifications            | **Done** |
+| 3     | Skill effects                  | Phase 2    | Damage/stamina bonuses applied based on skill level          | **Done** |
+| 4     | Death penalty                  | Phase 3    | Skill loss on death, immunity period                         | Not started |
+| 5     | Skills UI                      | Phase 4    | `/skills` opens menu showing all skills + levels             | Not started |
+| 6     | Polish + admin + release       | Phase 5    | Admin commands, performance optimization, CurseForge release | Not started |
 
 ## Key Constraints
 - **Performance**: Skill checks happen frequently (every attack, every movement tick) — must be efficient
@@ -184,14 +188,19 @@ The following APIs have been confirmed through implementation and SDK research:
 - **Events**: `PlayerReadyEvent`, `PlayerDisconnectEvent`, `DamageBlockEvent`, `DamageEvent`, `DeathEvent`, `BreakBlockEvent`
 - **Event registration**: `getEventRegistry().register()` for regular events, `EntityEventSystem<EntityStore, Event>` for ECS events
 - **Commands**: `CommandBase`, `AbstractPlayerCommand` (thread-safe ECS access), `AbstractCommandCollection` (subcommands), `ArgTypes`
-- **Kytale DSL**: `jsonConfig<T>()`, `command()`, `event()`, `enableHexweave {}` (damage/tick systems)
+- **Kytale DSL**: `jsonConfig<T>()`, `command()`, `event()`, `enableHexweave {}` (entity event/tick systems)
+- **Damage systems**: Custom `DamageEventSystem` subclasses registered via `entityStoreRegistry.registerSystem()` (not Hexweave — avoids `DynamicDamageSystem` duplicate class registration)
 - **UI**: `BasicCustomUIPage`, `InteractiveCustomUIPage`, `UICommandBuilder`, `UIEventBuilder`, `.ui` BSON layout files, `HudManager`
+- **Damage pipeline**: `DamageModule` groups: `gatherDamageGroup` → `filterDamageGroup` → `inspectDamageGroup` → `ApplyDamage`; custom `DamageEventSystem` subclasses with `before(ApplyDamage)` / `after(ApplyDamage)` ordering
+- **Damage MetaKeys**: `Damage.BLOCKED` (`MetaKey<Boolean>`), `Damage.STAMINA_DRAIN_MULTIPLIER` (`MetaKey<Float>`), `Damage.HIT_LOCATION`, `Damage.HIT_ANGLE`, `Damage.KNOCKBACK_COMPONENT`
+- **Damage object**: `getAmount()`/`setAmount(float)`, `getMetaObject()`/`putMetaObject()`, `getSource()` → `Damage.Source`/`Damage.EntitySource`
+- **Blocking**: All-or-nothing — `WieldingInteraction.DamageModifiers` are all 0 (100% blocked). Real cost is stamina: `StaminaCost { Value: 7, CostType: "Damage" }` → `damage / 7` stamina per block. Guard break on stamina depletion. Plugin reduces blocking stamina cost via `Damage.STAMINA_DRAIN_MULTIPLIER` MetaKey
 
 ## Configuration (config.json)
 Managed via Kytale `jsonConfig` DSL. Auto-generated on first run with defaults.
 ```kotlin
 SkillsConfig(
-    general = GeneralConfig(maxLevel = 100, showLevelUpNotifications = true, showXpGainNotifications = false, debugLogging = false),
+    general = GeneralConfig(maxLevel = 100, showLevelUpNotifications = true, showXpGainNotifications = false),
     xp = XpConfig(baseXpPerAction = 1.0, xpScaleFactor = 1.0, restedBonusMultiplier = 1.5, globalXpMultiplier = 1.0,
         actionXp = ActionXpConfig(
             combatDamageMultiplier = 0.1,
@@ -206,7 +215,7 @@ SkillsConfig(
         )
     ),
     deathPenalty = DeathPenaltyConfig(enabled = true, penaltyPercentage = 0.1, immunityDurationSeconds = 300, showImmunityInHud = true),
-    skillEffects = mapOf(/* per-skill SkillEffectEntry with damage, blockPower, speed, stamina, jumpHeight */)
+    skillEffects = mapOf(/* per-skill SkillEffectEntry with damage, speed, stamina, jumpHeight */)
 )
 ```
 
