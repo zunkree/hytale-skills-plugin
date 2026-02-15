@@ -51,7 +51,7 @@ class XpCurve(private val xpConfig: XpConfig) {
 }
 ```
 
-> **Architecture:** `XpCurve` is a class (not an object) that takes `XpConfig` via constructor injection. Instantiated once in `SkillsPlugin.setup()`.
+> **Architecture:** `XpCurve` is a class (not an object) that takes `XpConfig` via constructor injection. Instantiated once in `PluginApplication.setup()`.
 
 ### Task 2.2 — Create `XpService.kt`
 
@@ -134,16 +134,22 @@ class HarvestListener(
     private val blockSkillResolver: BlockSkillResolver,
     private val logger: HytaleLogger
 ) {
-    fun onPlayerDamageBlock(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
-        val blockId = ctx.event.blockType.id
+    fun onPlayerDamageBlock(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        commandBuffer: CommandBuffer<EntityStore>,
+        event: DamageBlockEvent,
+    ) {
+        val ref = chunk.getReferenceTo(index)
+        val blockId = event.blockType.id
         val skillType = blockSkillResolver.resolve(blockId) ?: return
         val multiplier = when (skillType) {
             SkillType.MINING -> actionXpConfig.miningPerBlockMultiplier
             SkillType.WOODCUTTING -> actionXpConfig.woodcuttingPerBlockMultiplier
             else -> return
         }
-        val baseXp = ctx.event.damage * multiplier
-        xpService.grantXpAndSave(ctx.commandBuffer, playerRef, skillType, baseXp)
+        val baseXp = event.damage * multiplier
+        xpService.grantXpAndSave(commandBuffer, ref, skillType, baseXp)
     }
 }
 ```
@@ -154,7 +160,7 @@ class HarvestListener(
 
 ### Task 2.5 — Create `MovementListener.kt`
 
-Uses Hexweave tick system for periodic movement XP tracking with cooldowns (tick systems still use Hexweave):
+Uses `EntityTickingSystem<EntityStore>` for periodic movement XP tracking with cooldowns:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
@@ -178,41 +184,41 @@ class MovementListener(
         const val MOVEMENT_XP_COOLDOWN = 1000L // 1 second between XP grants
     }
 
-    // Called from tick system for each online player
-    fun onPlayerTick(ctx: TickContext) {
-        val playerRef = ctx.playerRef
-        val playerId = ctx.playerId
+    // Called from MovementTickSystem for each online player
+    fun onTick(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        store: Store<EntityStore>,
+        commandBuffer: CommandBuffer<EntityStore>,
+        deltaTime: Float,
+    ) {
+        val ref = chunk.getReferenceTo(index)
+        val playerId = ref.uuid
         val now = System.currentTimeMillis()
 
         // Running XP (distance-based)
-        if (ctx.isSprinting && canGrantXp(playerId, SkillType.RUNNING, now)) {
-            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+        if (isSprinting(ref, store) && canGrantXp(playerId, SkillType.RUNNING, now)) {
+            xpService.grantXpAndSave(commandBuffer, ref,
                 SkillType.RUNNING, actionXpConfig.runningPerDistanceMultiplier)
         }
 
         // Swimming XP (distance-based)
-        if (ctx.isSwimming && canGrantXp(playerId, SkillType.SWIMMING, now)) {
-            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+        if (isSwimming(ref, store) && canGrantXp(playerId, SkillType.SWIMMING, now)) {
+            xpService.grantXpAndSave(commandBuffer, ref,
                 SkillType.SWIMMING, actionXpConfig.swimmingPerDistanceMultiplier)
         }
 
         // Diving XP (time-based, submerged in fluid)
-        if (ctx.isSubmerged && canGrantXp(playerId, SkillType.DIVING, now)) {
-            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+        if (isSubmerged(ref, store) && canGrantXp(playerId, SkillType.DIVING, now)) {
+            xpService.grantXpAndSave(commandBuffer, ref,
                 SkillType.DIVING, actionXpConfig.divingPerSecondMultiplier)
         }
 
         // Sneaking XP (time-based)
-        if (ctx.isSneaking && canGrantXp(playerId, SkillType.SNEAKING, now)) {
-            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+        if (isSneaking(ref, store) && canGrantXp(playerId, SkillType.SNEAKING, now)) {
+            xpService.grantXpAndSave(commandBuffer, ref,
                 SkillType.SNEAKING, actionXpConfig.sneakingPerSecondMultiplier)
         }
-    }
-
-    // Jumping XP — triggered by jump event, not tick
-    fun onPlayerJump(ctx: TickContext) {
-        xpService.grantXpAndSave(ctx.commandBuffer, ctx.playerRef,
-            SkillType.JUMPING, actionXpConfig.jumpingPerJumpMultiplier)
     }
 
     private fun canGrantXp(playerId: UUID, skillType: SkillType, now: Long): Boolean {
@@ -261,44 +267,41 @@ class BlockingListener(
 
 ### Task 2.7 — Register listeners in plugin setup
 
-Listeners are instantiated once in `SkillsPlugin.setup()` with dependencies injected. Event registration uses two patterns:
+Listeners are instantiated once in `PluginApplication.setup()` with dependencies injected. Event registration uses three patterns:
 
 1. **Custom DamageEventSystem subclasses** — for combat/blocking (damage pipeline), registered via `entityStoreRegistry.registerSystem()`
-2. **Hexweave** — for entity events (gathering) and tick systems (movement)
-3. **EntityEventSystem** — for harvest (DamageBlockEvent is an ECS event)
-4. **Event registry** — for standard events (PlayerReadyEvent, PlayerDisconnectEvent)
+2. **EntityEventSystem / EntityTickingSystem** — for gathering (DamageBlockEvent) and movement (tick system), registered via `entityStoreRegistry.registerSystem()`
+3. **Event registry** — for standard events (PlayerReadyEvent, PlayerDisconnectEvent), registered via `eventRegistry.register()`
 
 ```kotlin
-override fun setup() {
-    super.setup()
-    // ... existing code (config, repository, xpCurve, xpService) ...
-
-    // Instantiate listeners once with DI
-    val combatListener = CombatListener(xpService, config.xp.actionXp, weaponSkillResolver, logger)
-    val blockingListener = BlockingListener(xpService, config.xp.actionXp, logger)
-    val harvestListener = HarvestListener(xpService, config.xp.actionXp, blockSkillResolver, logger)
-    val movementListener = MovementListener(xpService, config.xp.actionXp, movementXpPolicy, logger)
-
-    // Damage systems: registered directly via Hytale API (not Hexweave)
-    entityStoreRegistry.registerSystem(SkillEffectDamageSystem(combatEffectApplier, logger))
-    entityStoreRegistry.registerSystem(CombatXpDamageSystem(combatListener, blockingListener, logger))
-
-    // Hexweave: entity events (gathering) + tick systems (movement)
-    registerHexweaveSystems(
-        gatheringEffectApplier, movementEffectApplier, statEffectApplier,
-        harvestListener, movementListener,
-    )
-
+// In PluginApplication.registerAll()
+fun registerAll(config: SkillsConfig, s: ServiceGraph) {
     // Standard events: player lifecycle
-    event<PlayerReadyEvent> { event -> playerLifecycleListener.onPlayerReady(event) }
-    event<PlayerDisconnectEvent> { event ->
-        playerLifecycleListener.onPlayerDisconnect(event)
-        movementListener.onPlayerDisconnect(event)
+    plugin.eventRegistry.register(PlayerReadyEvent::class.java) { event ->
+        s.playerLifecycleListener.onPlayerReady(event)
     }
+    plugin.eventRegistry.register(PlayerDisconnectEvent::class.java) { event ->
+        s.playerLifecycleListener.onPlayerDisconnect(event)
+        movementListener.onPlayerDisconnect(event)
+        movementEffectApplier.onPlayerDisconnect(event.playerRef.uuid)
+    }
+
+    // Damage systems: custom DamageEventSystem subclasses
+    plugin.entityStoreRegistry.registerSystem(SkillEffectDamageSystem(s.combatEffectApplier, log))
+    plugin.entityStoreRegistry.registerSystem(CombatXpDamageSystem(s.combatListener, s.blockingListener, log))
+
+    // ECS event system: gathering (DamageBlockEvent)
+    plugin.entityStoreRegistry.registerSystem(BlockDamageXpSystem(s.harvestListener, s.gatheringEffectApplier, log))
+
+    // ECS tick system: movement
+    plugin.entityStoreRegistry.registerSystem(MovementTickSystem(movementListener, s.statEffectApplier, movementEffectApplier, log))
+
+    // Command
+    plugin.commandRegistry.registerCommand(SkillsCommand(s.skillRepository, s.xpCurve, config.general, s.commandLogger))
 }
 ```
 
-> **Note:** Four event registration patterns are used: custom `DamageEventSystem` subclasses for damage pipeline, `enableHexweave {}` for entity event/tick systems, `EntityEventSystem` for ECS events, and `event<T> {}` (Kytale DSL) for standard lifecycle events.
+> **Note:** Three event registration patterns are used: custom `DamageEventSystem` subclasses for the damage pipeline, `EntityEventSystem<S,E>` / `EntityTickingSystem<S>` for ECS event and tick systems, and `eventRegistry.register()` for standard lifecycle events.
 
 ---
 
@@ -321,10 +324,10 @@ override fun setup() {
 ## Validated APIs
 
 - [x] **DamageEventSystem** — Custom subclasses with `SystemDependency(Order.AFTER, DamageSystems.ApplyDamage::class.java)` for combat and blocking XP
-- [x] **Hexweave tick system** — `enableHexweave { systems { tickSystem("id") { onTick { } } } }` for movement XP
+- [x] **EntityTickingSystem<EntityStore>** — Native ECS tick system for movement XP, registered via `entityStoreRegistry.registerSystem()`
 - [x] **DamageBlockEvent** — ECS event via `EntityEventSystem<EntityStore, DamageBlockEvent>` for gathering XP
-- [x] **CommandBuffer** — `ctx.commandBuffer` available in damage systems, Hexweave, and EntityEvent contexts for batched component writes
-- [x] **Event registry** — `getEventRegistry().register(EventClass::class.java) { }` for lifecycle events
+- [x] **CommandBuffer** — `commandBuffer` parameter available in damage systems, EntityEventSystem, and EntityTickingSystem for batched component writes
+- [x] **Event registry** — `eventRegistry.register(EventClass::class.java) { }` for lifecycle events
 - [x] **Player messaging** — `player.sendMessage(Message.raw("text"))` for level-up notifications
 - [x] **WeaponSkillResolver** — Item ID prefixes (`Weapon_Sword`, `Weapon_Axe`, etc.) map to SkillType via hytaleitemids.com
 - [x] **BlockSkillResolver** — Block ID prefixes (`Rock_*`, `Ore_*`, `Wood_*`) map to Mining/Woodcutting

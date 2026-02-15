@@ -78,8 +78,6 @@ Use the same build configuration as the storage plugin, with adjusted names:
 
 Key dependencies:
 - `compileOnly` for HytaleServer.jar (from local installation)
-- `compileOnly` for Kytale (from Maven or local)
-- `runtimeMods` configuration to copy Kytale for dev server
 
 ### Task 0.5 — Create `src/main/resources/manifest.json`
 
@@ -91,9 +89,7 @@ Key dependencies:
     "Main": "${main}",
     "Description": "${description}",
     "Authors": [{"Name": "zunkree"}],
-    "Dependencies": {
-        "AmoAster:Kytale": "*"
-    },
+    "Dependencies": {},
     "OptionalDependencies": {},
     "DisabledByDefault": false,
     "IncludesAssetPack": false
@@ -105,51 +101,37 @@ Key dependencies:
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin
 
-import aster.amo.kytale.KotlinPlugin
-import aster.amo.kytale.dsl.command
-import aster.amo.kytale.extension.info
-import com.hypixel.hytale.server.core.Message
+import com.hypixel.hytale.codec.builder.BuilderCodec
+import com.hypixel.hytale.server.core.plugin.JavaPlugin
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
+import com.hypixel.hytale.server.core.util.Config
+import org.zunkree.hytale.plugins.skillsplugin.bootstrap.PluginApplication
 
-class SkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
-
-    companion object {
-        lateinit var instance: SkillsPlugin
-            private set
-    }
+class SkillsPlugin(init: JavaPluginInit) : JavaPlugin(init) {
+    private lateinit var app: PluginApplication
 
     override fun setup() {
         super.setup()
-        instance = this
-
-        val version = pluginVersion()
-        logger.info { "HytaleSkills v$version loading..." }
-
-        // Register /skills command
-        command("skills", "View your skill levels") {
-            executes { ctx ->
-                ctx.sendMessage(Message.raw("HytaleSkills v$version - Valheim-inspired skill progression"))
-                ctx.sendMessage(Message.raw("Skills: Swords, Axes, Bows, Spears, Clubs, Unarmed"))
-                ctx.sendMessage(Message.raw("        Blocking, Mining, Woodcutting"))
-                ctx.sendMessage(Message.raw("        Running, Swimming, Sneaking, Jumping"))
-            }
-        }
-
-        logger.info { "HytaleSkills v$version loaded." }
+        app = PluginApplication(this)
+        app.setup()
     }
 
     override fun start() {
         super.start()
+        app.start()
     }
 
     override fun shutdown() {
-        logger.info { "HytaleSkills shutting down." }
+        app.shutdown()
         super.shutdown()
     }
 
-    fun pluginVersion(): String = manifest.version.toString()
+    fun <T : Any> loadConfig(name: String, codec: BuilderCodec<T>): Config<T> =
+        withConfig(name, codec)
 }
 ```
+
+> **Architecture:** `SkillsPlugin` extends `JavaPlugin` directly (no Kytale). All wiring and registration is delegated to `PluginApplication` in the `bootstrap/` package. Config loading uses the native `withConfig(name, codec)` API which returns a `Config<T>` handle.
 
 ### Task 0.7 — Create `.gitignore`
 
@@ -195,7 +177,6 @@ ls -la build/libs/skillsplugin-0.1.0.jar
 
 | Problem                     | Solution                                               |
 |-----------------------------|--------------------------------------------------------|
-| Kytale dependency not found | Check Maven repos, or copy from Gradle cache           |
 | Plugin doesn't load         | Check manifest.json Main class path                    |
-| `/skills` command not found | Verify Kytale loaded first, check command registration |
+| `/skills` command not found | Verify command registration in PluginApplication       |
 | Permission denied           | Run `op <username>` in server console                  |

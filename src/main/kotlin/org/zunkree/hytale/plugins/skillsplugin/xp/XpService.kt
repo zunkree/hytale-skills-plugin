@@ -1,8 +1,5 @@
 package org.zunkree.hytale.plugins.skillsplugin.xp
 
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
-import aster.amo.kytale.extension.info
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.logger.HytaleLogger
@@ -10,6 +7,8 @@ import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.entity.entities.Player
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import org.zunkree.hytale.plugins.skillsplugin.config.GeneralConfig
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
+import org.zunkree.hytale.plugins.skillsplugin.extension.info
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 
@@ -136,7 +135,7 @@ class XpService(
         }
 
         val player =
-            playerRef.store.getComponent(playerRef, componentType<Player>())
+            playerRef.store.getComponent(playerRef, Player.getComponentType())
                 ?: run {
                     logger.info { "Failed to load player entity from ${playerRef.store}" }
                     return

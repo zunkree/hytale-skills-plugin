@@ -1,7 +1,5 @@
 package org.zunkree.hytale.plugins.skillsplugin.system
 
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Store
@@ -10,19 +8,20 @@ import com.hypixel.hytale.component.dependency.Order
 import com.hypixel.hytale.component.dependency.SystemDependency
 import com.hypixel.hytale.component.query.Query
 import com.hypixel.hytale.logger.HytaleLogger
-import com.hypixel.hytale.server.core.modules.entity.AllLegacyLivingEntityTypesQuery
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageEventSystem
 import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
+import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap
 import com.hypixel.hytale.server.core.universe.PlayerRef
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import org.zunkree.hytale.plugins.skillsplugin.effect.CombatEffectApplier
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 
 class SkillEffectDamageSystem(
     private val combatEffectApplier: CombatEffectApplier,
     private val logger: HytaleLogger,
 ) : DamageEventSystem() {
-    override fun getQuery(): Query<EntityStore> = AllLegacyLivingEntityTypesQuery.INSTANCE
+    override fun getQuery(): Query<EntityStore> = EntityStatMap.getComponentType()
 
     override fun getDependencies(): Set<Dependency<EntityStore>> =
         setOf(
@@ -41,7 +40,7 @@ class SkillEffectDamageSystem(
             return
         }
         val ref = chunk.getReferenceTo(index)
-        val playerRef = store.getComponent(ref, componentType<PlayerRef>())
+        val playerRef = store.getComponent(ref, PlayerRef.getComponentType())
         val ctx = DamageContext(damage, commandBuffer, playerRef, logger)
         combatEffectApplier.modifyOutgoingDamage(ctx)
         combatEffectApplier.modifyBlockingStamina(ctx)

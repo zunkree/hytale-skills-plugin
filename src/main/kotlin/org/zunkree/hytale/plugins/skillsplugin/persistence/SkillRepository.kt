@@ -1,11 +1,10 @@
 package org.zunkree.hytale.plugins.skillsplugin.persistence
 
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillData
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
@@ -15,7 +14,7 @@ class SkillRepository(
 ) {
     fun getPlayerSkills(ref: Ref<EntityStore>): PlayerSkillsComponent? {
         logger.debug { "Loading player skills from $ref" }
-        return ref.store.getComponent(ref, componentType<PlayerSkillsComponent>())
+        return ref.store.getComponent(ref, PlayerSkillsComponent.componentType)
     }
 
     fun savePlayerSkills(
@@ -23,7 +22,7 @@ class SkillRepository(
         skills: PlayerSkillsComponent,
     ) {
         logger.debug { "Saving player skills to $ref" }
-        ref.store.putComponent(ref, componentType<PlayerSkillsComponent>(), skills)
+        ref.store.putComponent(ref, PlayerSkillsComponent.componentType, skills)
     }
 
     fun savePlayerSkills(
@@ -32,7 +31,7 @@ class SkillRepository(
         commandBuffer: CommandBuffer<EntityStore>,
     ) {
         logger.debug { "Saving player skills via command buffer to $ref" }
-        commandBuffer.putComponent(ref, componentType<PlayerSkillsComponent>(), skills)
+        commandBuffer.putComponent(ref, PlayerSkillsComponent.componentType, skills)
     }
 
     fun getSkillLevel(

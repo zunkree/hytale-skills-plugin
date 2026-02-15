@@ -56,20 +56,34 @@ Keep the resolver free of framework imports so it's directly testable.
 In `config/SkillsConfig.kt`, add the XP value to `ActionXpConfig`:
 
 ```kotlin
-@Serializable
 data class ActionXpConfig(
     // ... existing fields ...
-    val fishingXpPerCatch: Double = 5.0,
+    var fishingXpPerCatch: Double = 5.0,
 )
+```
+
+Also add the corresponding codec field in `SkillsConfigCodec`:
+
+```kotlin
+.append(
+    KeyedCodec("FishingXpPerCatch", Codec.DOUBLE),
+    { obj, v -> obj.fishingXpPerCatch = v },
+    { it.fishingXpPerCatch },
+).add()
 ```
 
 ## 4. Wire It Up
 
-In `SkillsPlugin.setup()`, create the listener and register it:
+In `PluginApplication`, create the listener and register it:
 
 ```kotlin
-val fishingListener = FishingListener(xpService, config.actionXp, logger)
-// Register with the appropriate event system
+// In PluginApplication.createServices():
+val fishingListener = FishingListener(xpService, config.xp.actionXp, logger)
+
+// In PluginApplication.registerAll():
+plugin.eventRegistry.register(FishCaughtEvent::class.java) { event ->
+    fishingListener.onFishCaught(event)
+}
 ```
 
 ## 5. Add Skill Effects (Optional)
@@ -116,6 +130,6 @@ class FishingXpPolicyTest {
 - [ ] Enum constant added to `SkillType`
 - [ ] XP trigger identified and implemented (listener + optional resolver)
 - [ ] Configuration value added to `ActionXpConfig`
-- [ ] Listener wired in `SkillsPlugin.setup()`
+- [ ] Listener wired in `PluginApplication`
 - [ ] Tests written for any pure domain logic
 - [ ] Quality checks pass

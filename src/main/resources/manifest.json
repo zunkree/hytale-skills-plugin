@@ -5,9 +5,7 @@
     "Main": "${main}",
     "Description": "${description}",
     "Authors": [{"Name": "zunkree"}],
-    "Dependencies": {
-        "AmoAster:Kytale": "*"
-    },
+    "Dependencies": {},
     "OptionalDependencies": {},
     "DisabledByDefault": false,
     "IncludesAssetPack": false

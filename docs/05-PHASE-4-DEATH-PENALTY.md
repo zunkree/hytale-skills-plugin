@@ -176,8 +176,8 @@ class ImmunityHudDisplay(
     private val deathPenaltyService: DeathPenaltyService,
     private val deathPenaltyConfig: DeathPenaltyConfig
 ) {
-    // Called from Hexweave tick system to update HUD each tick
-    fun updateImmunityDisplay(ctx: HexweaveTickContext) {
+    // Called from MovementTickSystem to update HUD each tick
+    fun updateImmunityDisplay(index: Int, chunk: ArchetypeChunk<EntityStore>, store: Store<EntityStore>) {
         if (!deathPenaltyConfig.showImmunityInHud) return
         val playerRef = ctx.playerRef
 

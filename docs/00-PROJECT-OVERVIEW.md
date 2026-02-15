@@ -10,10 +10,10 @@ A Valheim-inspired skill progression system for Hytale. Players improve at activ
 Hytale survival players who want meaningful progression tied to their playstyle. Players who enjoy "learning by doing" mechanics rather than traditional XP-based leveling.
 
 ## Technical Stack
-- **Language**: Kotlin (via Kytale framework)
+- **Language**: Kotlin
 - **Build System**: Gradle with Kotlin DSL
-- **Server API**: Hytale Server API
-- **Dependencies**: Kytale (Kotlin runtime + DSL)
+- **Server API**: Hytale Server API (native Hypixel APIs)
+- **Dependencies**: None (standalone plugin)
 - **Target Java Version**: 25
 - **Distribution**: CurseForge
 
@@ -128,7 +128,10 @@ skillsplugin/
 ├── gradle.properties
 ├── src/main/
 │   ├── kotlin/org/zunkree/hytale/plugins/skillsplugin/
-│   │   ├── SkillsPlugin.kt              # Main plugin entry (KotlinPlugin)
+│   │   ├── SkillsPlugin.kt              # Main plugin entry (JavaPlugin)
+│   │   ├── bootstrap/
+│   │   │   ├── PluginApplication.kt     # Wiring/DI, system registration
+│   │   │   └── RuntimeState.kt          # Shutdown state (active players)
 │   │   ├── skill/
 │   │   │   ├── SkillType.kt             # Enum: 15 skills with categories
 │   │   │   ├── SkillCategory.kt         # Enum: COMBAT, GATHERING, MOVEMENT, WEAPON, UTILITY
@@ -146,7 +149,15 @@ skillsplugin/
 │   │   ├── system/
 │   │   │   ├── DamageContext.kt         # Data class for damage system context
 │   │   │   ├── SkillEffectDamageSystem.kt # DamageEventSystem: effects (before ApplyDamage)
-│   │   │   └── CombatXpDamageSystem.kt  # DamageEventSystem: XP grants (after ApplyDamage)
+│   │   │   ├── CombatXpDamageSystem.kt  # DamageEventSystem: XP grants (after ApplyDamage)
+│   │   │   ├── BlockDamageXpSystem.kt   # EntityEventSystem: gathering XP + effects
+│   │   │   └── MovementTickSystem.kt    # EntityTickingSystem: movement XP + effects
+│   │   ├── effect/
+│   │   │   ├── CombatEffectApplier.kt   # Damage/blocking effects
+│   │   │   ├── MovementEffectApplier.kt # Speed/jump effects
+│   │   │   ├── StatEffectApplier.kt     # Stamina/oxygen effects
+│   │   │   ├── GatheringEffectApplier.kt # Mining/woodcutting speed
+│   │   │   └── SkillEffectCalculator.kt # Linear interpolation from config
 │   │   ├── listener/
 │   │   │   ├── CombatListener.kt        # Weapon XP from damage dealt
 │   │   │   ├── BlockingListener.kt      # Blocking XP from damage blocked
@@ -154,9 +165,13 @@ skillsplugin/
 │   │   │   ├── MovementListener.kt      # Tick-based movement XP tracking
 │   │   │   └── PlayerLifecycleListener.kt # PlayerReady/Disconnect → load/save
 │   │   ├── command/
-│   │   │   └── SkillsCommandHandler.kt  # /skills text display
-│   │   └── config/
-│   │       └── SkillsConfig.kt          # Nested config with jsonConfig DSL
+│   │   │   └── SkillsCommand.kt         # AbstractPlayerCommand for /skills
+│   │   ├── config/
+│   │   │   ├── SkillsConfig.kt          # Nested config data classes
+│   │   │   ├── SkillsConfigCodec.kt     # BuilderCodec definitions
+│   │   │   └── SkillsConfigValidator.kt # Config validation
+│   │   └── extension/
+│   │       └── LoggerExtensions.kt      # HytaleLogger Kotlin extensions (debug/info/error)
 │   └── resources/
 │       └── manifest.json
 ├── src/test/                             # Unit tests (XpCurve, resolvers, config)
@@ -188,8 +203,7 @@ The following APIs have been confirmed through implementation and SDK research:
 - **Events**: `PlayerReadyEvent`, `PlayerDisconnectEvent`, `DamageBlockEvent`, `DamageEvent`, `DeathEvent`, `BreakBlockEvent`
 - **Event registration**: `getEventRegistry().register()` for regular events, `EntityEventSystem<EntityStore, Event>` for ECS events
 - **Commands**: `CommandBase`, `AbstractPlayerCommand` (thread-safe ECS access), `AbstractCommandCollection` (subcommands), `ArgTypes`
-- **Kytale DSL**: `jsonConfig<T>()`, `command()`, `event()`, `enableHexweave {}` (entity event/tick systems)
-- **Damage systems**: Custom `DamageEventSystem` subclasses registered via `entityStoreRegistry.registerSystem()` (not Hexweave — avoids `DynamicDamageSystem` duplicate class registration)
+- **ECS systems**: `EntityEventSystem<S,E>` for entity events, `EntityTickingSystem<S>` for tick systems, custom `DamageEventSystem` subclasses for damage pipeline — all registered via `entityStoreRegistry.registerSystem()`
 - **UI**: `BasicCustomUIPage`, `InteractiveCustomUIPage`, `UICommandBuilder`, `UIEventBuilder`, `.ui` BSON layout files, `HudManager`
 - **Damage pipeline**: `DamageModule` groups: `gatherDamageGroup` → `filterDamageGroup` → `inspectDamageGroup` → `ApplyDamage`; custom `DamageEventSystem` subclasses with `before(ApplyDamage)` / `after(ApplyDamage)` ordering
 - **Damage MetaKeys**: `Damage.BLOCKED` (`MetaKey<Boolean>`), `Damage.STAMINA_DRAIN_MULTIPLIER` (`MetaKey<Float>`), `Damage.HIT_LOCATION`, `Damage.HIT_ANGLE`, `Damage.KNOCKBACK_COMPONENT`
@@ -197,7 +211,7 @@ The following APIs have been confirmed through implementation and SDK research:
 - **Blocking**: All-or-nothing — `WieldingInteraction.DamageModifiers` are all 0 (100% blocked). Real cost is stamina: `StaminaCost { Value: 7, CostType: "Damage" }` → `damage / 7` stamina per block. Guard break on stamina depletion. Plugin reduces blocking stamina cost via `Damage.STAMINA_DRAIN_MULTIPLIER` MetaKey
 
 ## Configuration (config.json)
-Managed via Kytale `jsonConfig` DSL. Auto-generated on first run with defaults.
+Managed via `BuilderCodec<T>` + `Config<T>` (native Hypixel API). Loaded with defaults via `loadConfig("skills", SkillsConfigCodec.CODEC)`.
 ```kotlin
 SkillsConfig(
     general = GeneralConfig(maxLevel = 100, showLevelUpNotifications = true, showXpGainNotifications = false),
@@ -221,6 +235,5 @@ SkillsConfig(
 
 ## Community Resources
 - HytaleModding.dev — guides on plugins, ECS, events
-- Kytale GitHub — Kotlin DSL patterns
 - HytaleModding Discord — active modding community
 - Valheim Wiki — reference implementation details

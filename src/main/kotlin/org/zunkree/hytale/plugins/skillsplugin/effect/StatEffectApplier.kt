@@ -1,14 +1,15 @@
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.hexweave.internal.system.TickContext
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
+import com.hypixel.hytale.component.ArchetypeChunk
+import com.hypixel.hytale.component.Store
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.entity.movement.MovementStatesComponent
 import com.hypixel.hytale.server.core.modules.entitystats.EntityStatMap
 import com.hypixel.hytale.server.core.modules.entitystats.asset.DefaultEntityStatTypes
 import com.hypixel.hytale.server.core.modules.entitystats.modifier.Modifier
 import com.hypixel.hytale.server.core.modules.entitystats.modifier.StaticModifier
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 
@@ -17,12 +18,16 @@ class StatEffectApplier(
     private val effectCalculator: SkillEffectCalculator,
     private val logger: HytaleLogger,
 ) {
-    fun applyStaminaEffects(ctx: TickContext) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
+    fun applyStaminaEffects(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        store: Store<EntityStore>,
+    ) {
+        val ref = chunk.getReferenceTo(index)
         val movementStates =
-            ctx.store.getComponent(ref, componentType<MovementStatesComponent>())?.movementStates ?: return
+            store.getComponent(ref, MovementStatesComponent.getComponentType())?.movementStates ?: return
 
-        val statMap = ctx.store.getComponent(ref, componentType<EntityStatMap>()) ?: return
+        val statMap = store.getComponent(ref, EntityStatMap.getComponentType()) ?: return
         val staminaIndex = DefaultEntityStatTypes.getStamina()
 
         if (movementStates.sprinting) {
@@ -49,12 +54,16 @@ class StatEffectApplier(
         statMap.removeModifier(staminaIndex, STAMINA_MODIFIER_KEY)
     }
 
-    fun applyOxygenEffects(ctx: TickContext) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
+    fun applyOxygenEffects(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        store: Store<EntityStore>,
+    ) {
+        val ref = chunk.getReferenceTo(index)
         val movementStates =
-            ctx.store.getComponent(ref, componentType<MovementStatesComponent>())?.movementStates ?: return
+            store.getComponent(ref, MovementStatesComponent.getComponentType())?.movementStates ?: return
 
-        val statMap = ctx.store.getComponent(ref, componentType<EntityStatMap>()) ?: return
+        val statMap = store.getComponent(ref, EntityStatMap.getComponentType()) ?: return
         val oxygenIndex = DefaultEntityStatTypes.getOxygen()
 
         if (movementStates.inFluid) {

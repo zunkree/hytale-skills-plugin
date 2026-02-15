@@ -31,7 +31,7 @@ A Hytale server plugin implementing a Valheim-inspired skill progression system.
 ### Hytale Plugin Model
 - **Server-side only**: All mods are server plugins. No client modification possible.
 - **Plugin lifecycle**: Constructor → `setup()` → `start()` → `shutdown()`
-- **Entry point**: `manifest.json` `Main` field points to class extending `KotlinPlugin`
+- **Entry point**: `manifest.json` `Main` field points to class extending `JavaPlugin`
 
 ### ECS Persistence
 - `addComponent()` - temporary, lost on restart
@@ -49,19 +49,23 @@ A Hytale server plugin implementing a Valheim-inspired skill progression system.
 
 1. Hytale must be installed via official launcher
 2. Java 25 required
-3. Kytale dependency required (copied to build/libs by Gradle)
-4. First run requires server authentication
+3. First run requires server authentication
 
 ## Planned Architecture (docs/)
 
 See `docs/00-PROJECT-OVERVIEW.md` for full roadmap. Target structure:
-- `skill/` - SkillType, SkillData, PlayerSkillsComponent, SkillManager
-- `system/` - Custom DamageEventSystem subclasses (SkillEffectDamageSystem, CombatXpDamageSystem, DamageContext)
+- `bootstrap/` - PluginApplication (wiring/DI), RuntimeState (shutdown state)
+- `skill/` - SkillType, SkillData, PlayerSkillsComponent
+- `system/` - Custom DamageEventSystem subclasses (SkillEffectDamageSystem, CombatXpDamageSystem), EntityEventSystem (BlockDamageXpSystem), EntityTickingSystem (MovementTickSystem)
 - `effect/` - Skill effect modifiers (damage, stamina, speed)
 - `listener/` - Event listeners for XP gain and death penalty
 - `ui/` - Skills menu UI
-- `command/` - /skills command
-- `config/` - Plugin configuration
+- `command/` - /skills command (AbstractPlayerCommand)
+- `config/` - SkillsConfig data classes, SkillsConfigCodec (BuilderCodec), SkillsConfigValidator
+- `extension/` - Kotlin logger extensions (debug/info/error for HytaleLogger)
+- `persistence/` - SkillRepository
+- `resolver/` - WeaponSkillResolver, BlockSkillResolver, MovementXpPolicy
+- `xp/` - XpCurve, XpService
 
 ## Reference: Valheim Mechanics
 

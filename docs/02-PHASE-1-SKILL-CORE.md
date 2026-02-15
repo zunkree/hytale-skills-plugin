@@ -93,7 +93,8 @@ class PlayerSkillsComponent : Component<EntityStore> {
     var deathImmunityUntil: Long = 0L
 
     companion object {
-        fun getComponentType(): ComponentType<EntityStore, PlayerSkillsComponent> = componentType()
+        // Registered at startup via entityStoreRegistry.registerComponent()
+        lateinit var componentType: ComponentType<EntityStore, PlayerSkillsComponent>
 
         // BuilderCodec encodes each skill type's level + totalXP, plus deathImmunityUntil
         // Uses SkillType.name as persistence keys for stability
@@ -140,34 +141,49 @@ class SkillRepository(private val logger: HytaleLogger) {
 }
 ```
 
-> **Architecture:** Uses constructor-injected dependencies instead of a static `object`. Instantiated in `SkillsPlugin.setup()` and passed to services that need it.
+> **Architecture:** Uses constructor-injected dependencies instead of a static `object`. Instantiated in `PluginApplication.setup()` and passed to services that need it.
 
 ### Task 1.5 — Update `/skills` command
 
-Update the command to display actual skill levels:
+Update the command to display actual skill levels using `AbstractPlayerCommand`:
 
 ```kotlin
-command("skills", "View your skill levels") {
-    executes { ctx ->
-        val playerRef = ctx.senderAsPlayerRef()
-        val skills = SkillManager.getPlayerSkills(playerRef)
+class SkillsCommand(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve,
+    private val generalConfig: GeneralConfig,
+    private val logger: HytaleLogger,
+) : AbstractPlayerCommand("skills", "View your skill levels and progress") {
+    override fun canGeneratePermission(): Boolean = false
 
+    override fun execute(
+        context: CommandContext,
+        store: Store<EntityStore>,
+        ref: Ref<EntityStore>,
+        playerRef: PlayerRef,
+        world: World,
+    ) {
+        val skills = skillRepository.getPlayerSkills(ref)
         val message = buildString {
-            appendLine("=== Your Skills ===")
-            for (category in SkillCategory.values()) {
-                appendLine("${category.displayName}:")
-                SkillType.values()
-                    .filter { it.category == category }
-                    .forEach { skillType ->
-                        val data = skills.getSkill(skillType)
-                        appendLine("  ${skillType.displayName}: Lv.${data.level}")
-                    }
+            append("Your Skills:\n")
+            if (skills == null || skills.skills.isEmpty()) {
+                append("No skills yet. Start playing to gain experience!")
+            } else {
+                for ((skillType, skillData) in skills.skills) {
+                    val progress = xpCurve.levelProgress(
+                        skillData.level, skillData.totalXP, generalConfig.maxLevel,
+                    )
+                    val pct = (progress * 100).toInt()
+                    append("${skillType.displayName}: Level ${skillData.level} ($pct% to next level)\n")
+                }
             }
         }
-        ctx.sendMessage(Message.raw(message))
+        context.sendMessage(Message.raw(message.trim()))
     }
 }
 ```
+
+> **Note:** Commands use `AbstractPlayerCommand` which provides thread-safe ECS access. The command is registered via `plugin.commandRegistry.registerCommand(SkillsCommand(...))` in `PluginApplication`.
 
 ### Task 1.6 — Test persistence
 

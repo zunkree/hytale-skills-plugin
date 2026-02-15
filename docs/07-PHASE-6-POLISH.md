@@ -117,10 +117,13 @@ class GiveXpCommand(
 }
 
 // /skills admin reload
-class ReloadCommand : CommandBase() {
+class ReloadCommand(private val configRef: Config<SkillsConfig>) : CommandBase() {
     override fun execute(ctx: CommandContext) {
-        // jsonConfig reload — exact API TBD
-        ctx.sendMessage(Message.raw("Configuration reloaded"))
+        // Reload config from disk via native Config<T> API
+        configRef.load().thenAccept { newConfig ->
+            // Update references to reloaded config
+            ctx.sendMessage(Message.raw("Configuration reloaded"))
+        }
     }
 }
 ```
@@ -179,10 +182,9 @@ A Valheim-inspired skill progression system for Hytale.
 
 ## Installation
 
-1. Install [Kytale](https://curseforge.com/hytale/mods/kytale) (required dependency)
-2. Download skillsplugin JAR
-3. Place in your Hytale mods folder
-4. Launch game
+1. Download skillsplugin JAR
+2. Place in your Hytale mods folder
+3. Launch game
 
 ## Commands
 
@@ -217,7 +219,7 @@ MIT License
 - [x] **AbstractCommandCollection** — Subcommand routing for `/skills admin <set|reset|give|reload>`
 - [x] **ArgTypes** — `ArgTypes.PLAYER`, `ArgTypes.STRING`, `ArgTypes.INTEGER`, `ArgTypes.DOUBLE` for command arguments
 - [x] **CommandBase** — Base class for non-player commands (like reload)
-- [x] **jsonConfig reload** — Kytale supports config reload (exact API for runtime reload TBD)
+- [x] **Config<T>.load()** — Re-reads config from disk for runtime reload
 
 ### Research Still Needed
 
@@ -274,5 +276,5 @@ Like Valheim, dying has consequences! You'll lose 10% of your skill levels, but 
 
 ## 📋 Requirements
 
-- Kytale (required)
+- Hytale server (no additional dependencies required)
 ```

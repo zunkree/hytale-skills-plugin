@@ -1,12 +1,12 @@
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import aster.amo.kytale.extension.debug
-import aster.amo.kytale.extension.info
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
+import org.zunkree.hytale.plugins.skillsplugin.extension.info
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
 import java.util.UUID

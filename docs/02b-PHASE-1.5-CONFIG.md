@@ -11,7 +11,7 @@ Establish the configuration system so all subsequent phases can read tunable val
 ## Done Criteria
 - [x] `SkillsConfig` data classes defined with sensible defaults
 - [x] `config.json` generated on first run with default values
-- [x] Config values accessible from plugin code via `jsonConfig`
+- [x] Config values accessible from plugin code via `BuilderCodec<T>` + `Config<T>`
 - [x] All tunable values (XP rates, penalties, effect multipliers) centralized in config
 
 ---
@@ -21,124 +21,122 @@ Establish the configuration system so all subsequent phases can read tunable val
 ### Task 1.5.1 — Research config API
 
 Before implementing, confirm:
-- [ ] `jsonConfig` DSL from Kytale — how to declare, load, and access config
-- [ ] Config file location (e.g., `config/skillsplugin/config.json`)
-- [ ] Auto-generation of default config on first run
-- [ ] Reload mechanism (for Phase 6 admin command)
+- [x] `BuilderCodec<T>` — how to define codecs for config data classes
+- [x] `JavaPlugin.withConfig(name, codec)` — returns `Config<T>` handle
+- [x] `Config<T>.load()` — returns `CompletableFuture<T>` with loaded/default values
+- [x] Config file location (plugin's data directory)
+- [x] Reload mechanism — `Config<T>.load()` re-reads from disk (for Phase 6 admin command)
 
 ### Task 1.5.2 — Create `SkillsConfig.kt`
+
+All config fields use `var` (not `val`) because `BuilderCodec` mutates objects via setters.
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.config
 
-// TODO: Research actual Kytale config API — jsonConfig usage is pseudo-code
-import aster.amo.kytale.config.jsonConfig
-
 data class SkillsConfig(
-    val general: GeneralConfig = GeneralConfig(),
-    val xp: XpConfig = XpConfig(),
-    val deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
-    val skillEffects: Map<SkillType, SkillEffectEntry> = defaultSkillEffects()
+    var general: GeneralConfig = GeneralConfig(),
+    var xp: XpConfig = XpConfig(),
+    var deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
+    var skillEffects: Map<SkillType, SkillEffectEntry> = defaultSkillEffects(),
 ) {
     companion object {
         fun defaultSkillEffects(): Map<SkillType, SkillEffectEntry> = mapOf(
             SkillType.SWORDS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.AXES to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.DAGGERS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.BOWS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.SPEARS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.CLUBS to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.UNARMED to SkillEffectEntry(minDamage = 1.0f, maxDamage = 2.0f),
-            SkillType.BLOCKING to SkillEffectEntry(
-                minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f
-            ),
-            SkillType.MINING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            SkillType.WOODCUTTING to SkillEffectEntry(minSpeed = 1.0f, maxSpeed = 1.5f),
-            SkillType.RUNNING to SkillEffectEntry(
-                minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f,
-                minStaminaReduction = 0.0f, maxStaminaReduction = 0.33f
-            ),
-            SkillType.SWIMMING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
-            SkillType.DIVING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.5f),
-            SkillType.SNEAKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
-            SkillType.JUMPING to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f)
+            // ... all skills ...
         )
     }
 }
 
 data class GeneralConfig(
-    val maxSkillLevel: Int = 100,
-    val showLevelUpNotifications: Boolean = true,
-    val showXpGainNotifications: Boolean = false,
-    val debugLogging: Boolean = false
+    var maxLevel: Int = 100,
+    var showLevelUpNotifications: Boolean = true,
+    var showXpGainNotifications: Boolean = false,
 )
 
 data class XpConfig(
-    val baseXpPerAction: Double = 1.0,
-    val xpScaleFactor: Double = 1.0,
-    val restedBonusMultiplier: Double = 1.5,
-    val globalXpMultiplier: Double = 1.0,
-    val actionXp: ActionXpConfig = ActionXpConfig()
+    var baseXpPerAction: Double = 1.0,
+    var xpScaleFactor: Double = 1.0,
+    var restedBonusMultiplier: Double = 1.5,
+    var globalXpMultiplier: Double = 1.0,
+    var actionXp: ActionXpConfig = ActionXpConfig(),
 )
 
 data class ActionXpConfig(
-    val combatDamageMultiplier: Double = 0.1,
-    val miningPerBlockMultiplier: Double = 1.0,
-    val woodcuttingPerBlockMultiplier: Double = 1.0,
-    val runningPerDistanceMultiplier: Double = 0.1,
-    val swimmingPerDistanceMultiplier: Double = 0.1,
-    val sneakingPerSecondMultiplier: Double = 0.1,
-    val jumpingPerJumpMultiplier: Double = 0.5,
-    val blockingDamageMultiplier: Double = 0.05,
-    val divingPerSecondMultiplier: Double = 0.1
+    var combatDamageMultiplier: Double = 0.1,
+    var miningPerBlockMultiplier: Double = 1.0,
+    var woodcuttingPerBlockMultiplier: Double = 1.0,
+    var runningPerDistanceMultiplier: Double = 0.1,
+    var swimmingPerDistanceMultiplier: Double = 0.1,
+    var sneakingPerSecondMultiplier: Double = 0.1,
+    var jumpingPerJumpMultiplier: Double = 0.5,
+    var blockingDamageMultiplier: Double = 0.05,
+    var divingPerSecondMultiplier: Double = 0.1,
 )
 
 data class DeathPenaltyConfig(
-    val enabled: Boolean = true,
-    val penaltyPercentage: Double = 0.1,
-    val immunityDurationSeconds: Int = 300,
-    val showImmunityInHud: Boolean = true
+    var enabled: Boolean = true,
+    var penaltyPercentage: Double = 0.1,
+    var immunityDurationSeconds: Int = 300,
+    var showImmunityInHud: Boolean = true,
 )
 
 data class SkillEffectEntry(
-    val minDamage: Float? = null,
-    val maxDamage: Float? = null,
-    val minSpeed: Float? = null,
-    val maxSpeed: Float? = null,
-    val minSpeedBonus: Float? = null,
-    val maxSpeedBonus: Float? = null,
-    val minStaminaReduction: Float? = null,
-    val maxStaminaReduction: Float? = null,
-    val minHeight: Float? = null,
-    val maxHeight: Float? = null
+    var minDamage: Float? = null,
+    var maxDamage: Float? = null,
+    var minSpeed: Float? = null,
+    var maxSpeed: Float? = null,
+    var minSpeedBonus: Float? = null,
+    var maxSpeedBonus: Float? = null,
+    var minStaminaReduction: Float? = null,
+    var maxStaminaReduction: Float? = null,
+    var minHeight: Float? = null,
+    var maxHeight: Float? = null,
+    var minOxygenBonus: Float? = null,
+    var maxOxygenBonus: Float? = null,
 )
 ```
 
+> **Note:** Fields are `var` (not `val`) because `BuilderCodec` populates objects by calling setters on a default-constructed instance.
+
 ### Task 1.5.3 — Register config in plugin
 
+Config is loaded in `PluginApplication.setup()` using the native `Config<T>` API:
+
 ```kotlin
+// In PluginApplication.kt
+fun setup() {
+    val configRef = plugin.loadConfig("skills", SkillsConfigCodec.CODEC)
+    val config: SkillsConfig = configRef.load().join()
+    SkillsConfigValidator.validate(config)
+    // ... use config for service creation ...
+}
+
 // In SkillsPlugin.kt
-class SkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
+class SkillsPlugin(init: JavaPluginInit) : JavaPlugin(init) {
+    fun <T : Any> loadConfig(name: String, codec: BuilderCodec<T>): Config<T> =
+        withConfig(name, codec)
+}
+```
 
-    // TODO: Research actual jsonConfig API
-    val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }
+A separate `SkillsConfigCodec` object builds the `BuilderCodec<SkillsConfig>` by composing sub-codecs for each config section. Each codec field maps a JSON key name to a getter/setter pair:
 
-    override fun setup() {
-        super.setup()
-        instance = this
-
-        val version = pluginVersion()
-        logger.info { "HytaleSkills v$version loading..." }
-        logger.info { "Config loaded: maxLevel=${config.general.maxSkillLevel}, deathPenalty=${config.deathPenalty.enabled}" }
-
-        // ... rest of setup
+```kotlin
+object SkillsConfigCodec {
+    val CODEC: BuilderCodec<SkillsConfig> = run {
+        val builder = BuilderCodec.builder(SkillsConfig::class.java, ::SkillsConfig)
+            .append(KeyedCodec("General", GENERAL_CODEC), { obj, v -> obj.general = v }, { it.general }).add()
+            .append(KeyedCodec("Xp", XP_CODEC), { obj, v -> obj.xp = v }, { it.xp }).add()
+            .append(KeyedCodec("DeathPenalty", DEATH_PENALTY_CODEC), { obj, v -> obj.deathPenalty = v }, { it.deathPenalty }).add()
+        // ... skill effect entries ...
+        builder.build()
     }
 }
 ```
 
 ### Task 1.5.4 — Create default `config.json`
 
-Place in `src/main/resources/config.json` (or wherever Kytale expects it):
+Place in the plugin's data directory (auto-generated from `BuilderCodec` defaults):
 
 ```json
 {
@@ -204,10 +202,11 @@ Place in `src/main/resources/config.json` (or wherever Kytale expects it):
 
 ## Validated APIs
 
-- [x] **`jsonConfig` DSL** — `val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }` in plugin class
-- [x] **Config file path** — Kytale places config in plugin's data directory
-- [x] **Default generation** — Kytale auto-generates JSON from data class defaults on first run
-- [x] **Reload support** — Config reload available for Phase 6 admin command
+- [x] **`BuilderCodec<T>`** — `BuilderCodec.builder(Class, Supplier).append(KeyedCodec(...), setter, getter).add().build()` for config serialization
+- [x] **`Config<T>`** — `JavaPlugin.withConfig(name, codec)` returns a `Config<T>` handle
+- [x] **`Config<T>.load()`** — Returns `CompletableFuture<T>` with loaded/default values
+- [x] **Config file path** — Native API places config in plugin's data directory
+- [x] **Reload support** — `Config<T>.load()` re-reads from disk (for Phase 6 admin command)
 
 ---
 
