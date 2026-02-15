@@ -6,338 +6,337 @@ Implement XP gain from player actions. Players earn XP in relevant skills by per
 ## Prerequisites
 - Phase 1.5 complete (skill data model, persistence, and config system working)
 
+## Status: **Complete**
+
 ## Done Criteria
-- [ ] Attacking enemies with weapons grants XP in the corresponding weapon skill
-- [ ] Mining ore/stone grants Mining XP
-- [ ] Chopping trees grants Woodcutting XP
-- [ ] Running grants Running XP (throttled)
-- [ ] Swimming grants Swimming XP (throttled)
-- [ ] Sneaking grants Sneaking XP (throttled)
-- [ ] Jumping grants Jumping XP
-- [ ] Blocking attacks grants Blocking XP
-- [ ] Level-up notifications displayed to player
-- [ ] "Rested" bonus increases XP gain by 50%
+- [x] Attacking enemies with weapons grants XP in the corresponding weapon skill
+- [x] Mining ore/stone grants Mining XP
+- [x] Chopping trees grants Woodcutting XP
+- [x] Running grants Running XP (distance-based)
+- [x] Swimming grants Swimming XP (distance-based)
+- [x] Diving grants Diving XP (time-based)
+- [x] Sneaking grants Sneaking XP (time-based)
+- [x] Jumping grants Jumping XP
+- [x] Blocking attacks grants Blocking XP
+- [x] Level-up notifications displayed to player
+- [x] Rested bonus multiplier configurable (default 1.5x)
 
 ---
 
 ## Tasks
 
-### Task 2.1 — Create XP calculation utilities
+### Task 2.1 — Create `XpCurve.kt`
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.skill
+package org.zunkree.hytale.plugins.skillsplugin.xp
 
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
+class XpCurve(private val xpConfig: XpConfig) {
+    fun xpRequiredForLevel(level: Int): Double =
+        xpConfig.baseXpPerAction * 100.0 * (1 + (level - 1) * xpConfig.xpScaleFactor)
 
-object XpCalculator {
-    // All values read from config (Phase 1.5) instead of hardcoded constants
-    private val config get() = HytaleSkillsPlugin.instance.config.xp
+    fun cumulativeXpForLevel(level: Int): Double =
+        (1..level).sumOf { xpRequiredForLevel(it) }
 
-    fun xpRequiredForLevel(level: Int): Float {
-        // XP required to go from level-1 to level
-        return config.baseXpPerAction * 100f * (1 + (level - 1) * config.xpScaleFactor)
+    fun calculateXpGain(baseXp: Double, isRested: Boolean): Double {
+        val multiplier = if (isRested) xpConfig.restedBonusMultiplier else 1.0
+        return baseXp * xpConfig.globalXpMultiplier * multiplier
     }
 
-    fun cumulativeXpForLevel(level: Int): Float {
-        // Total XP needed to reach this level from 0
-        var total = 0f
-        for (i in 1..level) {
-            total += xpRequiredForLevel(i)
-        }
-        return total
-    }
-
-    fun calculateXpGain(baseXp: Float, isRested: Boolean): Float {
-        val restedBonus = config.restedBonusMultiplier - 1f
-        val multiplier = if (isRested) 1f + restedBonus else 1f
-        return baseXp * config.globalXpMultiplier * multiplier
+    fun levelProgress(level: Int, totalXP: Double, maxLevel: Int): Double {
+        if (level >= maxLevel) return 1.0
+        val current = cumulativeXpForLevel(level)
+        val next = cumulativeXpForLevel(level + 1)
+        return ((totalXP - current) / (next - current)).coerceIn(0.0, 1.0)
     }
 }
 ```
 
-### Task 2.2 — Create `SkillXpService.kt`
+> **Architecture:** `XpCurve` is a class (not an object) that takes `XpConfig` via constructor injection. Instantiated once in `SkillsPlugin.setup()`.
+
+### Task 2.2 — Create `XpService.kt`
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.skill
+package org.zunkree.hytale.plugins.skillsplugin.xp
 
-import com.hypixel.hytale.component.Ref
-import com.hypixel.hytale.server.core.Message
-import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
-
-object SkillXpService {
-
-    fun grantXp(
-        playerRef: Ref<EntityStore>,
-        skillType: SkillType,
-        baseXp: Float,
-        isRested: Boolean = false
-    ): LevelUpResult? {
-        val skills = SkillManager.getPlayerSkills(playerRef)
+class XpService(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve,
+    private val generalConfig: GeneralConfig,
+    private val logger: HytaleLogger
+) {
+    fun grantXp(playerRef: Ref<EntityStore>, skillType: SkillType, baseXp: Double): LevelUpResult? {
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return null
         val skillData = skills.getSkill(skillType)
+        if (skillData.level >= generalConfig.maxLevel) return null
 
-        if (skillData.level >= SkillData.MAX_LEVEL) {
-            return null // Already max level
-        }
+        val xpGain = xpCurve.calculateXpGain(baseXp, isRested = false)
+        skillData.totalXP += xpGain
 
-        val xpGain = XpCalculator.calculateXpGain(baseXp, isRested)
-        skillData.totalXp += xpGain
-
-        val oldLevel = skillData.level
-        var newLevel = oldLevel
-
-        // Check for level ups
-        while (newLevel < SkillData.MAX_LEVEL) {
-            val xpForNext = XpCalculator.cumulativeXpForLevel(newLevel + 1)
-            if (skillData.totalXp >= xpForNext) {
-                newLevel++
-            } else {
-                break
-            }
-        }
-
-        skillData.level = newLevel
-        SkillManager.savePlayerSkills(playerRef, skills)
-
-        return if (newLevel > oldLevel) {
-            LevelUpResult(skillType, oldLevel, newLevel)
-        } else {
-            null
-        }
+        val levelUp = computeLevelUp(skillData, generalConfig.maxLevel)
+        return levelUp
     }
 
-    fun notifyLevelUp(playerRef: Ref<EntityStore>, result: LevelUpResult) {
-        // Send level up message to player
-        val message = "§a${result.skillType.displayName} increased to level ${result.newLevel}!"
-        // TODO: Use proper Hytale message API
+    // Variant that persists via CommandBuffer (used in ECS event handlers)
+    fun grantXpAndSave(commandBuffer: CommandBuffer<EntityStore>, playerRef: Ref<EntityStore>,
+                       skillType: SkillType, baseXp: Double): LevelUpResult? { ... }
+
+    fun notifyLevelUp(player: Player, result: LevelUpResult) {
+        if (generalConfig.showLevelUpNotifications) {
+            player.sendMessage(Message.raw("${result.skillType.displayName} increased to level ${result.newLevel}!"))
+        }
     }
 }
 
-data class LevelUpResult(
-    val skillType: SkillType,
-    val oldLevel: Int,
-    val newLevel: Int
-)
+data class LevelUpResult(val skillType: SkillType, val oldLevel: Int, val newLevel: Int)
 ```
+
+> **Architecture:** `XpService` uses constructor injection. `grantXpAndSave()` variant uses `CommandBuffer` for batched ECS updates in event handlers (required when modifying components during system iteration).
 
 ### Task 2.3 — Create `CombatListener.kt`
 
-Listen for damage events to grant weapon skill XP:
+Uses Kytale's Hexweave damage system (runs after `DamageSystems.ApplyDamage`):
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.listener
-
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillXpService
-
-class CombatListener {
-
-    private val config get() = HytaleSkillsPlugin.instance.config.xp.actionXp
-
-    // TODO: Research actual Hytale damage event API — event type is pseudo-code
-    fun onPlayerDealDamage(event: /* DamageEvent */) {
-        val attacker = event.attacker
-        if (!attacker.isPlayer) return
-
-        val playerRef = attacker.asPlayerRef()
-        val weapon = event.weapon // Get equipped weapon
-
-        val skillType = when {
-            weapon.isSword() -> SkillType.SWORDS
-            weapon.isAxe() -> SkillType.AXES
-            weapon.isBow() -> SkillType.BOWS
-            weapon.isSpear() -> SkillType.SPEARS
-            weapon.isClub() -> SkillType.CLUBS
-            weapon == null -> SkillType.UNARMED
-            else -> return // Unknown weapon type
-        }
-
-        // Grant XP based on damage dealt (multiplier from config)
-        val baseXp = event.damage * config.combatDamageMultiplier
-        val result = SkillXpService.grantXp(playerRef, skillType, baseXp)
-        result?.let { SkillXpService.notifyLevelUp(playerRef, it) }
+class CombatListener(
+    private val xpService: XpService,
+    private val actionXpConfig: ActionXpConfig,
+    private val weaponSkillResolver: WeaponSkillResolver,
+    private val logger: HytaleLogger
+) {
+    fun onPlayerDealDamage(ctx: HexweaveDamageContext) {
+        // Filter: only PHYSICAL/PROJECTILE damage from players
+        val playerRef = ctx.source?.playerRef ?: return
+        val itemId = ctx.source?.itemInHand?.id ?: ""
+        val skillType = weaponSkillResolver.resolve(itemId) ?: SkillType.UNARMED
+        val baseXp = ctx.damage * actionXpConfig.combatDamageMultiplier
+        xpService.grantXpAndSave(ctx.commandBuffer, playerRef, skillType, baseXp)
     }
 }
 ```
+
+**Weapon resolution**: `WeaponSkillResolver` maps Item ID prefixes to skills:
+- `Weapon_Sword`, `Weapon_Longsword` → SWORDS
+- `Weapon_Daggers` → DAGGERS
+- `Weapon_Axe`, `Weapon_Battleaxe` → AXES
+- `Weapon_Shortbow`, `Weapon_Crossbow` → BOWS
+- `Weapon_Spear` → SPEARS
+- `Weapon_Mace`, `Weapon_Club` → CLUBS
+- No match / empty hand → UNARMED
 
 ### Task 2.4 — Create `HarvestListener.kt`
 
-Listen for block break events to grant gathering skill XP:
+Uses `DamageBlockEvent` ECS event (registered via `EntityEventSystem`):
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.listener
-
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
-
-class HarvestListener {
-
-    private val config get() = HytaleSkillsPlugin.instance.config.xp.actionXp
-
-    // TODO: Research actual Hytale block break event API — event type is pseudo-code
-    fun onBlockBreak(event: /* BlockBreakEvent */) {
-        val player = event.player
-        val block = event.block
-        val tool = event.tool
-
-        val (skillType, baseXp) = when {
-            block.isOre() || block.isStone() -> SkillType.MINING to config.miningPerBlock
-            block.isWood() && tool.isAxe() -> SkillType.WOODCUTTING to config.woodcuttingPerBlock
+class HarvestListener(
+    private val xpService: XpService,
+    private val actionXpConfig: ActionXpConfig,
+    private val blockSkillResolver: BlockSkillResolver,
+    private val logger: HytaleLogger
+) {
+    fun onPlayerDamageBlock(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
+        val blockId = ctx.event.blockType.id
+        val skillType = blockSkillResolver.resolve(blockId) ?: return
+        val multiplier = when (skillType) {
+            SkillType.MINING -> actionXpConfig.miningPerBlockMultiplier
+            SkillType.WOODCUTTING -> actionXpConfig.woodcuttingPerBlockMultiplier
             else -> return
         }
-
-        val playerRef = player.asPlayerRef()
-        val result = SkillXpService.grantXp(playerRef, skillType, baseXp)
-        result?.let { SkillXpService.notifyLevelUp(playerRef, it) }
+        val baseXp = ctx.event.damage * multiplier
+        xpService.grantXpAndSave(ctx.commandBuffer, playerRef, skillType, baseXp)
     }
 }
 ```
 
+**Block resolution**: `BlockSkillResolver` maps block ID prefixes to skills:
+- `Rock_*`, `Ore_*` → MINING
+- `Wood_*` → WOODCUTTING
+
 ### Task 2.5 — Create `MovementListener.kt`
 
-Track movement actions with throttling to prevent spam:
+Uses Hexweave tick system for periodic movement XP tracking with cooldowns:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
+import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
+import org.zunkree.hytale.plugins.skillsplugin.config.ActionXpConfig
+import org.zunkree.hytale.plugins.skillsplugin.resolver.MovementXpPolicy
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-class MovementListener {
-
-    private val config get() = HytaleSkillsPlugin.instance.config.xp.actionXp
-
+class MovementListener(
+    private val xpService: XpService,
+    private val actionXpConfig: ActionXpConfig,
+    private val movementXpPolicy: MovementXpPolicy,
+    private val logger: HytaleLogger
+) {
     // Cooldowns to prevent XP spam (milliseconds)
-    private val runningCooldowns = ConcurrentHashMap<UUID, Long>()
-    private val swimmingCooldowns = ConcurrentHashMap<UUID, Long>()
-    private val sneakingCooldowns = ConcurrentHashMap<UUID, Long>()
+    private val cooldowns = ConcurrentHashMap<Pair<UUID, SkillType>, Long>()
 
     companion object {
         const val MOVEMENT_XP_COOLDOWN = 1000L // 1 second between XP grants
     }
 
-    // TODO: Research actual Hytale movement event API — event type is pseudo-code
-    fun onPlayerMove(event: /* PlayerMoveEvent */) {
-        val player = event.player
-        val playerId = player.uuid
-        val playerRef = player.asPlayerRef()
+    // Called from Hexweave tick system for each online player
+    fun onPlayerTick(ctx: HexweaveTickContext) {
+        val playerRef = ctx.playerRef
+        val playerId = ctx.playerId
         val now = System.currentTimeMillis()
 
-        when {
-            player.isRunning() -> {
-                if (canGrantXp(runningCooldowns, playerId, now)) {
-                    SkillXpService.grantXp(playerRef, SkillType.RUNNING, config.runningPerSecond)
-                    runningCooldowns[playerId] = now
-                }
-            }
-            player.isSwimming() -> {
-                if (canGrantXp(swimmingCooldowns, playerId, now)) {
-                    SkillXpService.grantXp(playerRef, SkillType.SWIMMING, config.swimmingPerSecond)
-                    swimmingCooldowns[playerId] = now
-                }
-            }
-            player.isSneaking() -> {
-                if (canGrantXp(sneakingCooldowns, playerId, now)) {
-                    SkillXpService.grantXp(playerRef, SkillType.SNEAKING, config.sneakingPerSecond)
-                    sneakingCooldowns[playerId] = now
-                }
-            }
+        // Running XP (distance-based)
+        if (ctx.isSprinting && canGrantXp(playerId, SkillType.RUNNING, now)) {
+            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+                SkillType.RUNNING, actionXpConfig.runningPerDistanceMultiplier)
+        }
+
+        // Swimming XP (distance-based)
+        if (ctx.isSwimming && canGrantXp(playerId, SkillType.SWIMMING, now)) {
+            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+                SkillType.SWIMMING, actionXpConfig.swimmingPerDistanceMultiplier)
+        }
+
+        // Diving XP (time-based, submerged in fluid)
+        if (ctx.isSubmerged && canGrantXp(playerId, SkillType.DIVING, now)) {
+            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+                SkillType.DIVING, actionXpConfig.divingPerSecondMultiplier)
+        }
+
+        // Sneaking XP (time-based)
+        if (ctx.isSneaking && canGrantXp(playerId, SkillType.SNEAKING, now)) {
+            xpService.grantXpAndSave(ctx.commandBuffer, playerRef,
+                SkillType.SNEAKING, actionXpConfig.sneakingPerSecondMultiplier)
         }
     }
 
-    // TODO: Research actual Hytale jump event API — event type is pseudo-code
-    fun onPlayerJump(event: /* PlayerJumpEvent */) {
-        val playerRef = event.player.asPlayerRef()
-        SkillXpService.grantXp(playerRef, SkillType.JUMPING, config.jumpingPerJump)
+    // Jumping XP — triggered by jump event, not tick
+    fun onPlayerJump(ctx: HexweaveTickContext) {
+        xpService.grantXpAndSave(ctx.commandBuffer, ctx.playerRef,
+            SkillType.JUMPING, actionXpConfig.jumpingPerJumpMultiplier)
     }
 
-    private fun canGrantXp(cooldowns: ConcurrentHashMap<UUID, Long>, playerId: UUID, now: Long): Boolean {
-        val lastGrant = cooldowns[playerId] ?: 0L
-        return now - lastGrant >= MOVEMENT_XP_COOLDOWN
+    private fun canGrantXp(playerId: UUID, skillType: SkillType, now: Long): Boolean {
+        val key = playerId to skillType
+        val lastGrant = cooldowns[key] ?: 0L
+        if (now - lastGrant >= MOVEMENT_XP_COOLDOWN) {
+            cooldowns[key] = now
+            return true
+        }
+        return false
+    }
+
+    fun clearCooldowns(playerId: UUID) {
+        cooldowns.keys.removeAll { it.first == playerId }
     }
 }
 ```
 
+> **Architecture:** `MovementListener` uses the Hexweave tick system (not event-based). Player state (sprinting, swimming, sneaking, submerged) is queried each tick. Cooldowns prevent XP spam. `clearCooldowns()` called on player disconnect.
+
 ### Task 2.6 — Create `BlockingListener.kt`
+
+Uses Hexweave damage system to detect blocked damage:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
+class BlockingListener(
+    private val xpService: XpService,
+    private val actionXpConfig: ActionXpConfig,
+    private val logger: HytaleLogger
+) {
+    fun onPlayerBlockDamage(ctx: HexweaveDamageContext) {
+        // Filter: only damage blocked by a player (target is blocking)
+        val playerRef = ctx.target?.playerRef ?: return
+        val blockedAmount = ctx.blockedDamage ?: return
+        if (blockedAmount <= 0.0) return
 
-class BlockingListener {
-
-    private val config get() = HytaleSkillsPlugin.instance.config.xp.actionXp
-
-    // TODO: Research actual Hytale block/parry event API — event type is pseudo-code
-    fun onPlayerBlock(event: /* BlockEvent */) {
-        val player = event.player
-        val damageBlocked = event.damageBlocked
-
-        val playerRef = player.asPlayerRef()
-        val baseXp = damageBlocked * config.blockingDamageMultiplier
-        val result = SkillXpService.grantXp(playerRef, SkillType.BLOCKING, baseXp)
-        result?.let { SkillXpService.notifyLevelUp(playerRef, it) }
+        val baseXp = blockedAmount * actionXpConfig.blockingDamageMultiplier
+        xpService.grantXpAndSave(ctx.commandBuffer, playerRef, SkillType.BLOCKING, baseXp)
     }
 }
 ```
 
+> **Architecture:** `BlockingListener` hooks into the same Hexweave damage pipeline as `CombatListener`, but inspects the target (defender) side. `ctx.blockedDamage` represents the portion of damage absorbed by blocking.
+
 ### Task 2.7 — Register listeners in plugin setup
 
-Listeners must be instantiated once and reused — **not** created per event fire:
+Listeners are instantiated once in `SkillsPlugin.setup()` with dependencies injected. Event registration uses two patterns:
+
+1. **Hexweave** — for combat/blocking (damage pipeline) and movement (tick system)
+2. **EntityEventSystem** — for harvest (DamageBlockEvent is an ECS event)
+3. **Event registry** — for standard events (PlayerReadyEvent, PlayerDisconnectEvent)
 
 ```kotlin
 override fun setup() {
     super.setup()
-    // ... existing code ...
+    // ... existing code (config, repository, xpCurve, xpService) ...
 
-    // Instantiate listeners once
-    val combatListener = CombatListener()
-    val harvestListener = HarvestListener()
-    val movementListener = MovementListener()
-    val blockingListener = BlockingListener()
+    // Instantiate listeners once with DI
+    val combatListener = CombatListener(xpService, config.xp.actionXp, weaponSkillResolver, logger)
+    val blockingListener = BlockingListener(xpService, config.xp.actionXp, logger)
+    val harvestListener = HarvestListener(xpService, config.xp.actionXp, blockSkillResolver, logger)
+    val movementListener = MovementListener(xpService, config.xp.actionXp, movementXpPolicy, logger)
 
-    // TODO: Research actual Hytale/Kytale event registration API — event types are pseudo-code
-    events {
-        on<DamageEvent> { combatListener.onPlayerDealDamage(it) }
-        on<BlockBreakEvent> { harvestListener.onBlockBreak(it) }
-        on<PlayerMoveEvent> { movementListener.onPlayerMove(it) }
-        on<PlayerJumpEvent> { movementListener.onPlayerJump(it) }
-        on<BlockEvent> { blockingListener.onPlayerBlock(it) }
+    // Hexweave: combat + blocking (damage pipeline)
+    enableHexweave {
+        damageSystems {
+            after(DamageSystems.ApplyDamage) { ctx ->
+                combatListener.onPlayerDealDamage(ctx)
+                blockingListener.onPlayerBlockDamage(ctx)
+            }
+        }
+        tickSystems {
+            // Movement XP via tick
+            playerTick { ctx -> movementListener.onPlayerTick(ctx) }
+        }
+    }
+
+    // ECS event: harvest (DamageBlockEvent)
+    EntityEventSystem<EntityStore, DamageBlockEvent> { ctx ->
+        harvestListener.onPlayerDamageBlock(ctx)
+    }
+
+    // Standard events: player lifecycle
+    getEventRegistry().register(PlayerReadyEvent::class.java) { event ->
+        // Initialize component if needed
+    }
+    getEventRegistry().register(PlayerDisconnectEvent::class.java) { event ->
+        movementListener.clearCooldowns(event.playerId)
     }
 }
 ```
 
-> **Note:** All event names (`DamageEvent`, `BlockBreakEvent`, `PlayerMoveEvent`, etc.) are pseudo-code. The actual Hytale/Kytale event types need to be discovered from SDK documentation.
+> **Note:** Three event registration patterns are used: `enableHexweave {}` for damage/tick systems, `EntityEventSystem` for ECS events, and `getEventRegistry().register()` for standard lifecycle events.
 
 ---
 
 ## XP Gain Summary
 
-| Skill         | Trigger         | Base XP        | Notes       |
-|---------------|-----------------|----------------|-------------|
-| Weapon skills | Deal damage     | damage * 0.1   | Per hit     |
-| Mining        | Break ore/stone | 1.0            | Per block   |
-| Woodcutting   | Chop tree       | 1.0            | Per block   |
-| Running       | Sprint          | 0.1            | 1s cooldown |
-| Swimming      | Swim            | 0.1            | 1s cooldown |
-| Sneaking      | Sneak           | 0.1            | 1s cooldown |
-| Jumping       | Jump            | 0.5            | Per jump    |
-| Blocking      | Block damage    | blocked * 0.05 | Per block   |
+| Skill         | Trigger         | Base XP              | Notes                   |
+|---------------|-----------------|----------------------|-------------------------|
+| Weapon skills | Deal damage     | damage * 0.1         | Per hit (Hexweave)      |
+| Mining        | Damage ore/stone| damage * 1.0         | DamageBlockEvent        |
+| Woodcutting   | Damage wood     | damage * 1.0         | DamageBlockEvent        |
+| Running       | Sprint          | 0.1                  | 1s cooldown (tick)      |
+| Swimming      | Swim            | 0.1                  | 1s cooldown (tick)      |
+| Diving        | Submerge        | 0.1                  | 1s cooldown (tick)      |
+| Sneaking      | Sneak           | 0.1                  | 1s cooldown (tick)      |
+| Jumping       | Jump            | 0.5                  | Per jump                |
+| Blocking      | Block damage    | blocked * 0.05       | Per block (Hexweave)    |
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm the following APIs against actual Hytale/Kytale SDK documentation:
-
-- [ ] **Damage event** — Event type for when a player deals damage, including attacker/weapon/damage fields
-- [ ] **Block break event** — Event type for when a player breaks a block, including block type and tool
-- [ ] **Movement events** — How to detect running, swimming, sneaking, jumping states
-- [ ] **Event registration** — Kytale `events { on<T> { } }` DSL syntax and lifecycle
-- [ ] **Weapon/tool type detection** — How to determine what weapon/tool a player is holding
-- [ ] **Player messaging** — API for sending chat messages and notifications to players
-- [ ] **Block/material type checks** — How to determine if a block is ore, stone, wood, etc.
+- [x] **Hexweave damage system** — `enableHexweave { damageSystems { after(DamageSystems.ApplyDamage) { ctx -> } } }` for combat and blocking XP
+- [x] **Hexweave tick system** — `enableHexweave { tickSystems { playerTick { ctx -> } } }` for movement XP
+- [x] **DamageBlockEvent** — ECS event via `EntityEventSystem<EntityStore, DamageBlockEvent>` for gathering XP
+- [x] **CommandBuffer** — `ctx.commandBuffer` available in Hexweave and EntityEvent contexts for batched component writes
+- [x] **Event registry** — `getEventRegistry().register(EventClass::class.java) { }` for lifecycle events
+- [x] **Player messaging** — `player.sendMessage(Message.raw("text"))` for level-up notifications
+- [x] **WeaponSkillResolver** — Item ID prefixes (`Weapon_Sword`, `Weapon_Axe`, etc.) map to SkillType via hytaleitemids.com
+- [x] **BlockSkillResolver** — Block ID prefixes (`Rock_*`, `Ore_*`, `Wood_*`) map to Mining/Woodcutting
 
 ---
 

@@ -45,23 +45,24 @@ Based on research from [Game8 Valheim Guide](https://game8.co/games/Valheim/arch
 
 ## Hytale Adaptation
 
-### Proposed Skills for Hytale
-| Skill | Trigger | Effect |
-|-------|---------|--------|
-| **Swords** | Deal damage with sword | +damage (up to 2x) |
-| **Axes** | Deal damage with axe | +damage (up to 2x) |
-| **Bows** | Deal damage with bow | +damage, -draw time |
-| **Spears** | Deal damage with spear | +damage (up to 2x) |
-| **Clubs** | Deal damage with blunt weapon | +damage (up to 2x) |
-| **Unarmed** | Deal damage without weapon | +damage (up to 2x) |
-| **Blocking** | Block incoming damage | +block power (up to 1.5x) |
-| **Mining** | Mine ore/stone | +mining speed, -stamina |
-| **Woodcutting** | Chop trees | +chopping speed, -stamina |
-| **Running** | Sprint | +speed, -stamina drain |
-| **Swimming** | Swim | +swim speed, -stamina drain |
-| **Diving** | Submerge in fluid | +oxygen capacity |
-| **Sneaking** | Sneak near enemies | -detection, -stamina |
-| **Jumping** | Jump | +height |
+### Hytale Skills (15 total)
+| Skill | Category | Trigger | Effect |
+|-------|----------|---------|--------|
+| **Swords** | Weapon | Deal damage with sword/longsword | +damage (up to 2x) |
+| **Daggers** | Weapon | Deal damage with daggers | +damage (up to 2x) |
+| **Axes** | Weapon | Deal damage with axe/battleaxe | +damage (up to 2x) |
+| **Bows** | Weapon | Deal damage with shortbow/crossbow | +damage, -draw time |
+| **Spears** | Weapon | Deal damage with spear | +damage (up to 2x) |
+| **Clubs** | Weapon | Deal damage with mace/club | +damage (up to 2x) |
+| **Unarmed** | Weapon | Deal damage without weapon | +damage (up to 2x) |
+| **Blocking** | Utility | Block incoming damage | +block power (up to 1.5x) |
+| **Mining** | Gathering | Damage ore/stone blocks | +mining speed, -stamina |
+| **Woodcutting** | Gathering | Damage wood blocks | +chopping speed, -stamina |
+| **Running** | Movement | Sprint | +speed, -stamina drain |
+| **Swimming** | Movement | Swim | +swim speed, -stamina drain |
+| **Diving** | Movement | Submerge in fluid | +oxygen capacity |
+| **Sneaking** | Movement | Crouch while moving | -detection, -stamina |
+| **Jumping** | Movement | Jump | +height |
 
 ### Key Differences from Valheim
 - Hytale uses an ECS architecture — skills stored as persistent components on players
@@ -72,26 +73,31 @@ Based on research from [Game8 Valheim Guide](https://game8.co/games/Valheim/arch
 
 ### Player Skill Data Storage
 ```kotlin
-// Persistent ECS component on player entity
-data class PlayerSkillsComponent(
-    val skills: MutableMap<SkillType, SkillData> = mutableMapOf()
-)
+// Persistent ECS component on player entity (Component<EntityStore>)
+// Uses putComponent() for persistence across restarts
+// Serialized via BuilderCodec<T> to BSON
+class PlayerSkillsComponent : Component<EntityStore> {
+    val skills: MutableMap<SkillType, SkillData>  // All 15 skills initialized to level 0
+    var deathImmunityUntil: Long = 0L             // Timestamp for death penalty immunity
+}
 
 data class SkillData(
     var level: Int = 0,           // 0-100
-    var xp: Float = 0f,           // Progress to next level
-    var totalXp: Float = 0f       // Lifetime XP (for death penalty calculation)
+    var totalXP: Double = 0.0     // Cumulative XP from level 0
 )
 ```
 
 ### XP Formula
 ```
-XP required for level N = baseXP * (1 + (N * scaleFactor))
+XP required for level N = baseXpPerAction * 100 * (1 + (N-1) * xpScaleFactor)
 
-Example with baseXP=100, scaleFactor=0.1:
+Example with baseXpPerAction=1.0, xpScaleFactor=1.0:
 - Level 1 requires 100 XP
-- Level 50 requires 600 XP
-- Level 100 requires 1100 XP
+- Level 50 requires 5000 XP
+- Level 100 requires 10000 XP
+
+Cumulative XP is tracked per skill (totalXP field).
+Level-up occurs when totalXP >= cumulativeXpForLevel(currentLevel + 1).
 ```
 
 ### Damage/Effect Formula
@@ -108,9 +114,9 @@ Example for weapon damage (min=1.0, max=2.0):
 ```
 New level = floor(currentLevel * (1 - penaltyPercent))
 
-With 5% penalty:
-- Level 100 → 95
-- Level 50 → 47
+Default: 10% penalty with 300s (5 min) immunity:
+- Level 100 → 90
+- Level 50 → 45
 - Level 10 → 9
 ```
 
@@ -122,70 +128,86 @@ skillsplugin/
 ├── gradle.properties
 ├── src/main/
 │   ├── kotlin/org/zunkree/hytale/plugins/skillsplugin/
-│   │   ├── HytaleSkillsPlugin.kt         # Main plugin entry point
+│   │   ├── SkillsPlugin.kt              # Main plugin entry (KotlinPlugin)
 │   │   ├── skill/
-│   │   │   ├── SkillType.kt              # Enum of all skill types
-│   │   │   ├── SkillData.kt              # Individual skill data
-│   │   │   ├── PlayerSkillsComponent.kt  # ECS component for player skills
-│   │   │   └── SkillManager.kt           # XP gain, level up logic
-│   │   ├── effect/
-│   │   │   ├── SkillEffectApplier.kt     # Apply bonuses based on skill level
-│   │   │   ├── DamageModifier.kt         # Modify damage output
-│   │   │   └── StaminaModifier.kt        # Modify stamina usage
+│   │   │   ├── SkillType.kt             # Enum: 15 skills with categories
+│   │   │   ├── SkillCategory.kt         # Enum: COMBAT, GATHERING, MOVEMENT, WEAPON, UTILITY
+│   │   │   ├── SkillData.kt             # Level + cumulative XP with BuilderCodec
+│   │   │   └── PlayerSkillsComponent.kt # ECS Component<EntityStore> with codec
+│   │   ├── xp/
+│   │   │   ├── XpCurve.kt              # Quadratic XP formula + level progress
+│   │   │   └── XpService.kt            # Grant XP, level-up check, notifications
+│   │   ├── persistence/
+│   │   │   └── SkillRepository.kt       # ECS component get/put via Ref<EntityStore>
+│   │   ├── resolver/
+│   │   │   ├── WeaponSkillResolver.kt   # Item ID prefix → SkillType
+│   │   │   ├── BlockSkillResolver.kt    # Block ID prefix → Mining/Woodcutting
+│   │   │   └── MovementXpPolicy.kt      # Movement state → XP grants
 │   │   ├── listener/
-│   │   │   ├── CombatListener.kt         # Track combat for weapon skills
-│   │   │   ├── MovementListener.kt       # Track running, jumping, swimming
-│   │   │   ├── HarvestListener.kt        # Track mining, woodcutting
-│   │   │   └── DeathListener.kt          # Apply death penalty
-│   │   ├── ui/
-│   │   │   └── SkillsUI.kt               # Skills display menu
+│   │   │   ├── CombatListener.kt        # Hexweave damage system for weapon XP
+│   │   │   ├── BlockingListener.kt      # Hexweave damage system for blocking XP
+│   │   │   ├── HarvestListener.kt       # DamageBlockEvent for gathering XP
+│   │   │   ├── MovementListener.kt      # Tick-based movement XP tracking
+│   │   │   └── PlayerLifecycleListener.kt # PlayerReady/Disconnect → load/save
 │   │   ├── command/
-│   │   │   └── SkillsCommand.kt          # /skills command
+│   │   │   └── SkillsCommandHandler.kt  # /skills text display
 │   │   └── config/
-│   │       └── SkillsConfig.kt           # Plugin configuration (Phase 1.5)
+│   │       └── SkillsConfig.kt          # Nested config with jsonConfig DSL
 │   └── resources/
-│       ├── manifest.json
-│       ├── config.json
-│       └── Server/
-│           └── UI/
-│               └── skills_menu.ui
-└── docs/
-    └── phases/                           # This project plan
+│       └── manifest.json
+├── src/test/                             # Unit tests (XpCurve, resolvers, config)
+└── docs/                                 # Phase documentation
 ```
 
 ## Phase Summary
 | Phase | Goal | Depends On | Deliverable |
 |-------|------|------------|-------------|
-| 0 | Project setup + hello world | Nothing | Compiling plugin, `/skills` command works |
-| 1 | Skill data model + persistence | Phase 0 | SkillType enum, PlayerSkillsComponent, save/load |
-| 1.5 | Configuration system | Phase 1 | SkillsConfig, config.json, tunable values available |
-| 2 | XP gain + leveling | Phase 1.5 | Gain XP from actions, level up with notifications |
-| 3 | Skill effects | Phase 2 | Damage/stamina bonuses applied based on skill level |
-| 4 | Death penalty | Phase 3 | Skill loss on death, immunity period |
-| 5 | Skills UI | Phase 4 | `/skills` opens menu showing all skills + levels |
-| 6 | Polish + admin + release | Phase 5 | Admin commands, performance optimization, CurseForge release |
+| 0 | Project setup + hello world | Nothing | Compiling plugin, `/skills` command works | **Done** |
+| 1 | Skill data model + persistence | Phase 0 | SkillType enum, PlayerSkillsComponent, save/load | **Done** |
+| 1.5 | Configuration system | Phase 1 | SkillsConfig, config.json, tunable values available | **Done** |
+| 2 | XP gain + leveling | Phase 1.5 | Gain XP from actions, level up with notifications | **Done** |
+| 3 | Skill effects | Phase 2 | Damage/stamina bonuses applied based on skill level | Not started |
+| 4 | Death penalty | Phase 3 | Skill loss on death, immunity period | Not started |
+| 5 | Skills UI | Phase 4 | `/skills` opens menu showing all skills + levels | Not started |
+| 6 | Polish + admin + release | Phase 5 | Admin commands, performance optimization, CurseForge release | Not started |
 
 ## Key Constraints
-- **Event hooking**: Must find correct Hytale events for damage dealt, blocks broken, movement, death
 - **Performance**: Skill checks happen frequently (every attack, every movement tick) — must be efficient
-- **UI latency**: Skills UI is server round-trip; cache skill data client-side if possible via HUD elements
-- **Balance**: XP rates and bonuses need tuning; expose all values in config
-- **API Research**: Code examples throughout these docs represent *design intent*, not confirmed APIs. Hytale and Kytale are evolving — event types, ECS methods, UI systems, and command argument types all need discovery and validation against actual SDK documentation before implementation. Each phase includes a "Research Required" section listing the APIs to confirm.
+- **UI latency**: Skills UI is server round-trip; use `BasicCustomUIPage`/`InteractiveCustomUIPage` with `.ui` template files
+- **Balance**: XP rates and bonuses need tuning; all values exposed in config
+- **Thread safety**: ECS component access must happen on world thread; use `AbstractPlayerCommand` for commands, `world.execute()` for async→sync bridging
+- **DamageModule dependency**: `DamageEvent` and `DeathEvent` require `"Hytale:DamageModule"` in manifest dependencies
+
+## Validated APIs
+The following APIs have been confirmed through implementation and SDK research:
+- **ECS**: `Component<EntityStore>`, `ComponentType`, `putComponent()` (persistent), `addComponent()` (temporary), `BuilderCodec<T>`, `CommandBuffer<EntityStore>`
+- **Events**: `PlayerReadyEvent`, `PlayerDisconnectEvent`, `DamageBlockEvent`, `DamageEvent`, `DeathEvent`, `BreakBlockEvent`
+- **Event registration**: `getEventRegistry().register()` for regular events, `EntityEventSystem<EntityStore, Event>` for ECS events
+- **Commands**: `CommandBase`, `AbstractPlayerCommand` (thread-safe ECS access), `AbstractCommandCollection` (subcommands), `ArgTypes`
+- **Kytale DSL**: `jsonConfig<T>()`, `command()`, `event()`, `enableHexweave {}` (damage/tick systems)
+- **UI**: `BasicCustomUIPage`, `InteractiveCustomUIPage`, `UICommandBuilder`, `UIEventBuilder`, `.ui` BSON layout files, `HudManager`
 
 ## Configuration (config.json)
-```json
-{
-    "maxSkillLevel": 100,
-    "baseXpPerAction": 1.0,
-    "xpScaleFactor": 0.1,
-    "deathPenaltyPercent": 0.05,
-    "deathImmunitySeconds": 600,
-    "restedXpBonus": 0.5,
-    "skillEffects": {
-        "SWORDS": { "minDamageMultiplier": 1.0, "maxDamageMultiplier": 2.0 },
-        "RUNNING": { "minSpeedBonus": 0.0, "maxSpeedBonus": 0.25, "minStaminaReduction": 0.0, "maxStaminaReduction": 0.33 }
-    }
-}
+Managed via Kytale `jsonConfig` DSL. Auto-generated on first run with defaults.
+```kotlin
+SkillsConfig(
+    general = GeneralConfig(maxLevel = 100, showLevelUpNotifications = true, showXpGainNotifications = false, debugLogging = false),
+    xp = XpConfig(baseXpPerAction = 1.0, xpScaleFactor = 1.0, restedBonusMultiplier = 1.5, globalXpMultiplier = 1.0,
+        actionXp = ActionXpConfig(
+            combatDamageMultiplier = 0.1,
+            miningPerBlockMultiplier = 1.0,
+            woodcuttingPerBlockMultiplier = 1.0,
+            runningPerDistanceMultiplier = 0.1,
+            swimmingPerDistanceMultiplier = 0.1,
+            sneakingPerSecondMultiplier = 0.1,
+            jumpingPerJumpMultiplier = 0.5,
+            blockingDamageMultiplier = 0.05,
+            divingPerSecondMultiplier = 0.1
+        )
+    ),
+    deathPenalty = DeathPenaltyConfig(enabled = true, penaltyPercentage = 0.1, immunityDurationSeconds = 300, showImmunityInHud = true),
+    skillEffects = mapOf(/* per-skill SkillEffectEntry with damage, blockPower, speed, stamina, jumpHeight */)
+)
 ```
 
 ## Community Resources

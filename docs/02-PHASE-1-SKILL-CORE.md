@@ -6,12 +6,14 @@ Define the skill types, create the data model for storing skill levels and XP, a
 ## Prerequisites
 - Phase 0 complete (plugin loads and `/skills` command works)
 
+## Status: **Complete**
+
 ## Done Criteria
-- [ ] `SkillType` enum with all 13 skills defined
-- [ ] `SkillData` class with level, XP, and totalXP fields
-- [ ] `PlayerSkillsComponent` ECS component with `BuilderCodec` for persistence
-- [ ] Skills persist across server restarts
-- [ ] `/skills` command shows current skill levels
+- [x] `SkillType` enum with all 15 skills defined (added DAGGERS, DIVING)
+- [x] `SkillData` class with level and cumulative totalXP (Double)
+- [x] `PlayerSkillsComponent` ECS component (`Component<EntityStore>`) with `BuilderCodec` for persistence
+- [x] Skills persist across server restarts via `putComponent()`
+- [x] `/skills` command shows current skill levels with progress
 
 ---
 
@@ -24,27 +26,34 @@ package org.zunkree.hytale.plugins.skillsplugin.skill
 
 enum class SkillType(
     val displayName: String,
-    val category: SkillCategory
+    val categories: Set<SkillCategory>
 ) {
     // Weapon skills
-    SWORDS("Swords", SkillCategory.WEAPON),
-    AXES("Axes", SkillCategory.WEAPON),
-    BOWS("Bows", SkillCategory.WEAPON),
-    SPEARS("Spears", SkillCategory.WEAPON),
-    CLUBS("Clubs", SkillCategory.WEAPON),
-    UNARMED("Unarmed", SkillCategory.WEAPON),
+    SWORDS("Swords", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    DAGGERS("Daggers", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    AXES("Axes", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    BOWS("Bows", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    SPEARS("Spears", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    CLUBS("Clubs", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
+    UNARMED("Unarmed", setOf(SkillCategory.WEAPON, SkillCategory.COMBAT)),
 
     // Utility skills
-    BLOCKING("Blocking", SkillCategory.UTILITY),
-    MINING("Mining", SkillCategory.GATHERING),
-    WOODCUTTING("Woodcutting", SkillCategory.GATHERING),
-    RUNNING("Running", SkillCategory.MOVEMENT),
-    SWIMMING("Swimming", SkillCategory.MOVEMENT),
-    SNEAKING("Sneaking", SkillCategory.MOVEMENT),
-    JUMPING("Jumping", SkillCategory.MOVEMENT);
+    BLOCKING("Blocking", setOf(SkillCategory.UTILITY, SkillCategory.COMBAT)),
+
+    // Gathering skills
+    MINING("Mining", setOf(SkillCategory.GATHERING)),
+    WOODCUTTING("Woodcutting", setOf(SkillCategory.GATHERING)),
+
+    // Movement skills
+    RUNNING("Running", setOf(SkillCategory.MOVEMENT)),
+    SWIMMING("Swimming", setOf(SkillCategory.MOVEMENT)),
+    DIVING("Diving", setOf(SkillCategory.MOVEMENT)),
+    SNEAKING("Sneaking", setOf(SkillCategory.MOVEMENT)),
+    JUMPING("Jumping", setOf(SkillCategory.MOVEMENT));
 }
 
 enum class SkillCategory(val displayName: String) {
+    COMBAT("Combat"),
     WEAPON("Weapon"),
     UTILITY("Utility"),
     GATHERING("Gathering"),
@@ -59,106 +68,79 @@ package org.zunkree.hytale.plugins.skillsplugin.skill
 
 data class SkillData(
     var level: Int = 0,
-    var totalXp: Float = 0f
+    var totalXP: Double = 0.0
 ) {
     companion object {
-        const val MAX_LEVEL = 100
-    }
-
-    fun getLevelProgress(): Float {
-        // At max level, progress is always 100%
-        if (level >= MAX_LEVEL) return 1.0f
-
-        // Returns 0.0 - 1.0 progress to next level
-        // Delegates to XpCalculator (defined in Phase 2) for XP thresholds
-        val xpForNext = XpCalculator.cumulativeXpForLevel(level + 1)
-        val xpForCurrent = XpCalculator.cumulativeXpForLevel(level)
-        val xpIntoLevel = totalXp - xpForCurrent
-        val xpNeeded = xpForNext - xpForCurrent
-        return (xpIntoLevel / xpNeeded).coerceIn(0f, 1f)
+        val CODEC: BuilderCodec<SkillData> = // BuilderCodec with "level" (Int) and "totalXP" (Double) fields
     }
 }
 ```
 
-> **Note:** `getLevelProgress()` forward-references `XpCalculator` (Phase 2). During Phase 1 development, you can stub it or inline a simple calculation. The full `XpCalculator` is introduced in Phase 2, Task 2.1.
+> **Note:** Level progress calculation is handled by `XpCurve.levelProgress()` (Phase 2), not stored in `SkillData`.
 
 ### Task 1.3 — Create `PlayerSkillsComponent.kt`
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.skill
 
-// TODO: Research actual Hytale ECS API — these imports are pseudo-code
-import com.hypixel.hytale.codec.Codec
-import com.hypixel.hytale.codec.builder.BuilderCodec
+import com.hypixel.hytale.server.core.modules.entity.Component
+import com.hypixel.hytale.server.core.modules.entity.ComponentType
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 
-data class PlayerSkillsComponent(
-    val skills: MutableMap<SkillType, SkillData> = mutableMapOf(),
+class PlayerSkillsComponent : Component<EntityStore> {
+    val skills: MutableMap<SkillType, SkillData> = SkillType.entries.associateWith { SkillData() }.toMutableMap()
     // Death immunity timestamp — deliberately persistent so immunity survives server restarts.
-    // Design choice: if a player dies and the server restarts within the immunity window,
-    // they should not be punished again. The minor downside (immunity persists across
-    // intentional restarts) is acceptable.
     var deathImmunityUntil: Long = 0L
-) {
+
     companion object {
-        // TODO: Research actual BuilderCodec API — this is pseudo-code
-        val CODEC: Codec<PlayerSkillsComponent> = BuilderCodec.of(PlayerSkillsComponent::class.java)
-            .with("skills", { it.skills }, { map ->
-                // Serialize skill map
-            })
-            .with("deathImmunityUntil", { it.deathImmunityUntil }, Long::class.java)
-            .build { PlayerSkillsComponent() }
+        fun getComponentType(): ComponentType<EntityStore, PlayerSkillsComponent> = componentType()
+
+        // BuilderCodec encodes each skill type's level + totalXP, plus deathImmunityUntil
+        // Uses SkillType.name as persistence keys for stability
+        val CODEC: BuilderCodec<PlayerSkillsComponent> = // ...
     }
 
-    fun getSkill(type: SkillType): SkillData {
-        return skills.getOrPut(type) { SkillData() }
-    }
-
-    fun setSkill(type: SkillType, data: SkillData) {
-        skills[type] = data
-    }
-
-    fun getAllSkills(): Map<SkillType, SkillData> = skills.toMap()
-
-    fun getTotalLevels(): Int = skills.values.sumOf { it.level }
+    fun getSkill(type: SkillType): SkillData = skills.getOrPut(type) { SkillData() }
+    fun setSkill(type: SkillType, data: SkillData) { skills[type] = data }
+    val allSkills: Map<SkillType, SkillData> get() = skills.toMap()
+    val totalLevels: Int get() = skills.values.sumOf { it.level }
+    override fun clone(): PlayerSkillsComponent = // deep copy
 }
 ```
 
-> **Note:** The `BuilderCodec`, `Codec`, and related ECS persistence APIs shown here are pseudo-code. Consult actual Hytale/Kytale SDK documentation for the correct serialization approach, especially for maps of custom types.
+> **Persistence:** Component registered via `entityStoreRegistry.registerComponent(PlayerSkillsComponent.getComponentType(), CODEC)` in plugin `setup()`. Uses `putComponent()` (persistent) not `addComponent()` (temporary).
 
-> **Schema versioning:** If the component fields change between plugin versions, you'll need a migration strategy. Consider adding a `version` field to the component and handling upgrades in the codec's `build` factory.
-
-### Task 1.4 — Create `SkillManager.kt`
+### Task 1.4 — Create `SkillRepository.kt`
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.skill
+package org.zunkree.hytale.plugins.skillsplugin.persistence
 
-// TODO: Research actual Hytale ECS API — Ref<EntityStore> is pseudo-code
-import com.hypixel.hytale.component.Ref
+import com.hypixel.hytale.server.core.modules.entity.Ref
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 
-object SkillManager {
+class SkillRepository(private val logger: HytaleLogger) {
 
     fun getPlayerSkills(playerRef: Ref<EntityStore>): PlayerSkillsComponent? {
-        val store = playerRef.store ?: return null  // Guard against invalid refs
-        return store.getComponent(PlayerSkillsComponent::class.java)
-            ?: PlayerSkillsComponent().also {
-                store.putComponent(it)  // putComponent for persistence
-            }
+        val store = playerRef.store
+        return store.getComponent(playerRef, PlayerSkillsComponent.getComponentType())
     }
 
     fun savePlayerSkills(playerRef: Ref<EntityStore>, skills: PlayerSkillsComponent) {
-        playerRef.store?.putComponent(skills)  // TODO: Research actual putComponent API
+        val store = playerRef.store
+        store.putComponent(playerRef, skills)  // putComponent = persistent
     }
 
-    fun getSkillLevel(playerRef: Ref<EntityStore>, skillType: SkillType): Int {
-        return getPlayerSkills(playerRef)?.getSkill(skillType)?.level ?: 0
+    // Overload using CommandBuffer for batched updates (used in listeners)
+    fun savePlayerSkills(commandBuffer: CommandBuffer<EntityStore>, playerRef: Ref<EntityStore>, skills: PlayerSkillsComponent) {
+        commandBuffer.putComponent(playerRef, skills)
     }
 
-    fun getSkillData(playerRef: Ref<EntityStore>, skillType: SkillType): SkillData {
-        return getPlayerSkills(playerRef)?.getSkill(skillType) ?: SkillData()
-    }
+    fun getSkillLevel(playerRef: Ref<EntityStore>, skillType: SkillType): Int =
+        getPlayerSkills(playerRef)?.getSkill(skillType)?.level ?: 0
 }
 ```
+
+> **Architecture:** Uses constructor-injected dependencies instead of a static `object`. Instantiated in `SkillsPlugin.setup()` and passed to services that need it.
 
 ### Task 1.5 — Update `/skills` command
 
@@ -209,16 +191,16 @@ command("skills", "View your skill levels") {
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm the following APIs against actual Hytale/Kytale SDK documentation:
+All APIs for this phase have been confirmed:
 
-- [ ] **ECS component registration** — How to register a custom component type with the entity system
-- [ ] **`Ref<EntityStore>`** — Correct type for player entity references; may differ from pseudo-code
-- [ ] **`putComponent()` vs `addComponent()`** — Verify persistence semantics and API signatures
-- [ ] **`BuilderCodec<T>`** — Correct codec API for serializing data classes, maps, and enums
-- [ ] **`ctx.senderAsPlayerRef()`** — How to get a player entity reference from a command context
-- [ ] **Component lifecycle** — When components are loaded/unloaded, thread safety guarantees
+- [x] **ECS component registration** — `entityStoreRegistry.registerComponent(componentType, codec)` in plugin `setup()`
+- [x] **`Ref<EntityStore>`** — Player entity reference; obtained via `PlayerRef.getComponentType()` query or event context
+- [x] **`putComponent()` vs `addComponent()`** — `putComponent()` persists across restarts, `addComponent()` is temporary
+- [x] **`BuilderCodec<T>`** — `BuilderCodec.builder(Class, Supplier).with("name", Codec.TYPE, getter, setter).build()`
+- [x] **`ctx.senderAsPlayerRef()`** — Returns `Ref<EntityStore>` from command context
+- [x] **Component lifecycle** — Components loaded with entity; ECS access must be on world thread (use `AbstractPlayerCommand` for commands)
 
 ---
 

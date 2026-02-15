@@ -9,11 +9,13 @@ A compiling Kotlin plugin that loads on a local Hytale server and responds to a 
 - Hytale game installed (need `HytaleServer.jar` from the installation)
 - Git
 
+## Status: **Complete**
+
 ## Done Criteria
-- [ ] `./gradlew build` produces a `.jar` in `build/libs/`
-- [ ] Plugin loads on a local Hytale server without errors
-- [ ] Typing `/skills` in-game prints a version message to chat
-- [ ] Project pushed to GitHub with `.gitignore` excluding build artifacts
+- [x] `./gradlew build` produces a `.jar` in `build/libs/`
+- [x] Plugin loads on a local Hytale server without errors
+- [x] Typing `/skills` in-game prints a version message to chat
+- [x] Project pushed to GitHub with `.gitignore` excluding build artifacts
 
 ---
 
@@ -27,7 +29,7 @@ Create the following directory structure:
 skillsplugin/
 ├── src/main/
 │   ├── kotlin/org/zunkree/hytale/plugins/skillsplugin/
-│   │   └── HytaleSkillsPlugin.kt
+│   │   └── SkillsPlugin.kt
 │   └── resources/
 │       └── manifest.json
 ├── build.gradle.kts
@@ -59,7 +61,7 @@ kotlin.code.style=official
 pluginGroup=org.zunkree.hytale.plugins
 pluginVersion=0.1.0
 pluginDescription=Valheim-inspired skill progression system for Hytale
-pluginMain=org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
+pluginMain=org.zunkree.hytale.plugins.skillsplugin.SkillsPlugin
 
 java_version=25
 includes_pack=false
@@ -72,7 +74,7 @@ load_user_mods=false
 Use the same build configuration as the storage plugin, with adjusted names:
 - Project name: `skillsplugin`
 - Group: `org.zunkree.hytale.plugins`
-- Main class: `org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin`
+- Main class: `org.zunkree.hytale.plugins.skillsplugin.SkillsPlugin`
 
 Key dependencies:
 - `compileOnly` for HytaleServer.jar (from local installation)
@@ -98,7 +100,7 @@ Key dependencies:
 }
 ```
 
-### Task 0.6 — Create `HytaleSkillsPlugin.kt`
+### Task 0.6 — Create `SkillsPlugin.kt`
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin
@@ -109,10 +111,10 @@ import aster.amo.kytale.extension.info
 import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
 
-class HytaleSkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
+class SkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
 
     companion object {
-        lateinit var instance: HytaleSkillsPlugin
+        lateinit var instance: SkillsPlugin
             private set
     }
 

@@ -7,12 +7,12 @@ Implement skill loss on death, similar to Valheim. When players die, they lose a
 - Phase 3 complete (skill effects working)
 
 ## Done Criteria
-- [ ] On death, player loses configurable % of each skill level (default 5%)
+- [ ] On death, player loses configurable % of each skill level (default 10%)
 - [ ] Death penalty applies to all skills simultaneously
-- [ ] 10-minute immunity period after death prevents repeated skill loss
-- [ ] Immunity timer visible to player
+- [ ] 5-minute immunity period after death prevents repeated skill loss (300s default)
+- [ ] Immunity timer visible to player (via HUD)
 - [ ] Death penalty can be disabled in config
-- [ ] "No Skill Drain" status effect shown during immunity
+- [ ] "No Skill Drain" status shown during immunity
 
 ---
 
@@ -23,34 +23,28 @@ Implement skill loss on death, similar to Valheim. When players die, they lose a
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.skill
 
-import com.hypixel.hytale.component.Ref
+import com.hypixel.hytale.server.core.modules.entity.Ref
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
 
-object DeathPenaltyService {
-
-    // All values read from config (Phase 1.5)
-    private val deathConfig get() = HytaleSkillsPlugin.instance.config.deathPenalty
-    private val penaltyPercent get() = deathConfig.penaltyPercent
-    private val immunityDurationMs get() = deathConfig.immunityDurationSeconds * 1000L
-    private val enabled get() = deathConfig.enabled
-
-    /**
-     * Apply death penalty to player's skills.
-     * Returns true if penalty was applied, false if player was immune.
-     */
+class DeathPenaltyService(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve,
+    private val deathPenaltyConfig: DeathPenaltyConfig,
+    private val logger: HytaleLogger
+) {
     fun applyDeathPenalty(playerRef: Ref<EntityStore>): DeathPenaltyResult {
-        if (!enabled) {
+        if (!deathPenaltyConfig.enabled) {
             return DeathPenaltyResult(applied = false, reason = "Death penalty disabled")
         }
 
-        val skills = SkillManager.getPlayerSkills(playerRef)
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return DeathPenaltyResult(
+            applied = false, reason = "No skill data found"
+        )
         val now = System.currentTimeMillis()
 
-        // Check immunity
+        // Check immunity (stored in persistent component)
         if (now < skills.deathImmunityUntil) {
-            val remainingMs = skills.deathImmunityUntil - now
-            val remainingSeconds = remainingMs / 1000
+            val remainingSeconds = (skills.deathImmunityUntil - now) / 1000
             return DeathPenaltyResult(
                 applied = false,
                 reason = "No Skill Drain active (${remainingSeconds}s remaining)"
@@ -59,14 +53,13 @@ object DeathPenaltyService {
 
         // Apply penalty to each skill
         val penalties = mutableMapOf<SkillType, Int>()
-        for ((skillType, skillData) in skills.getAllSkills()) {
+        for ((skillType, skillData) in skills.allSkills) {
             if (skillData.level > 0) {
                 val oldLevel = skillData.level
-                val newLevel = (oldLevel * (1f - penaltyPercent)).toInt()
-                skillData.level = newLevel.coerceAtLeast(0)
-
-                // Adjust totalXp to match new level
-                skillData.totalXp = XpCalculator.cumulativeXpForLevel(newLevel)
+                val newLevel = (oldLevel * (1.0 - deathPenaltyConfig.penaltyPercentage)).toInt()
+                    .coerceAtLeast(0)
+                skillData.level = newLevel
+                skillData.totalXP = xpCurve.cumulativeXpForLevel(newLevel)
 
                 val levelsLost = oldLevel - newLevel
                 if (levelsLost > 0) {
@@ -76,30 +69,25 @@ object DeathPenaltyService {
         }
 
         // Grant immunity
+        val immunityDurationMs = deathPenaltyConfig.immunityDurationSeconds * 1000L
         skills.deathImmunityUntil = now + immunityDurationMs
-        SkillManager.savePlayerSkills(playerRef, skills)
+        skillRepository.savePlayerSkills(playerRef, skills)
 
         return DeathPenaltyResult(
             applied = true,
-            reason = "Skills reduced by ${(penaltyPercent * 100).toInt()}%",
+            reason = "Skills reduced by ${(deathPenaltyConfig.penaltyPercentage * 100).toInt()}%",
             penalties = penalties,
             immunityUntil = skills.deathImmunityUntil
         )
     }
 
-    /**
-     * Check if player has death immunity.
-     */
     fun hasImmunity(playerRef: Ref<EntityStore>): Boolean {
-        val skills = SkillManager.getPlayerSkills(playerRef)
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return false
         return System.currentTimeMillis() < skills.deathImmunityUntil
     }
 
-    /**
-     * Get remaining immunity time in seconds.
-     */
     fun getRemainingImmunitySeconds(playerRef: Ref<EntityStore>): Long {
-        val skills = SkillManager.getPlayerSkills(playerRef)
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return 0L
         val remaining = skills.deathImmunityUntil - System.currentTimeMillis()
         return (remaining / 1000).coerceAtLeast(0)
     }
@@ -113,44 +101,52 @@ data class DeathPenaltyResult(
 )
 ```
 
+> **Architecture:** `DeathPenaltyService` uses constructor injection. Immunity timestamp is stored in `PlayerSkillsComponent.deathImmunityUntil` (persistent via `putComponent()`), so immunity survives server restarts.
+
 ### Task 4.2 — Create `DeathListener.kt`
+
+Uses the `DeathEvent` from Hytale's DamageModule (must be declared in `manifest.json` dependencies):
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import org.zunkree.hytale.plugins.skillsplugin.skill.DeathPenaltyService
 import com.hypixel.hytale.server.core.Message
+import com.hypixel.hytale.server.core.modules.damage.DeathEvent
 
-class DeathListener {
+class DeathListener(
+    private val deathPenaltyService: DeathPenaltyService,
+    private val deathPenaltyConfig: DeathPenaltyConfig,
+    private val logger: HytaleLogger
+) {
+    fun onPlayerDeath(event: DeathEvent) {
+        val playerRef = event.entityRef  // Ref<EntityStore> of the dead entity
+        // Filter: only apply to players
+        // TODO: Confirm how to check if entityRef is a player in DeathEvent
 
-    // TODO: Research actual Hytale death event API — event type is pseudo-code
-    fun onPlayerDeath(event: /* PlayerDeathEvent */) {
-        val player = event.player
-        val playerRef = player.asPlayerRef()
-
-        val result = DeathPenaltyService.applyDeathPenalty(playerRef)
+        val result = deathPenaltyService.applyDeathPenalty(playerRef)
 
         if (result.applied) {
-            // Notify player of skill loss
+            val immunityMinutes = deathPenaltyConfig.immunityDurationSeconds / 60
             val message = buildString {
-                appendLine("§c=== Death Penalty ===")
-                appendLine("§7${result.reason}")
+                appendLine("=== Death Penalty ===")
+                appendLine(result.reason)
                 if (result.penalties.isNotEmpty()) {
-                    appendLine("§7Skills lost:")
+                    appendLine("Skills lost:")
                     result.penalties.forEach { (skill, levels) ->
-                        appendLine("  §c-$levels §7${skill.displayName}")
+                        appendLine("  -$levels ${skill.displayName}")
                     }
                 }
-                appendLine("§aNo Skill Drain active for 10 minutes")
+                appendLine("No Skill Drain active for $immunityMinutes minutes")
             }
-            player.sendMessage(Message.raw(message))
+            // TODO: Send message to player after respawn
         } else {
-            // Player was immune
-            player.sendMessage(Message.raw("§a${result.reason} - No skill loss!"))
+            logger.info { "Death penalty not applied: ${result.reason}" }
         }
     }
 }
 ```
+
+> **Manifest dependency:** `DeathEvent` requires adding `"Hytale:DamageModule": "*"` to the `Dependencies` section of `manifest.json`.
 
 ### Task 4.3 — Register death listener
 
@@ -159,70 +155,68 @@ override fun setup() {
     super.setup()
     // ... existing code ...
 
-    val deathListener = DeathListener()  // Instantiate once
+    val deathPenaltyService = DeathPenaltyService(skillRepository, xpCurve, config.deathPenalty, logger)
+    val deathListener = DeathListener(deathPenaltyService, config.deathPenalty, logger)
 
-    // TODO: Research actual Hytale death event API — event type is pseudo-code
-    events {
-        on<PlayerDeathEvent> { event ->
-            deathListener.onPlayerDeath(event)
-        }
+    // DeathEvent from DamageModule — registered via standard event registry
+    getEventRegistry().register(DeathEvent::class.java) { event ->
+        deathListener.onPlayerDeath(event)
     }
 }
 ```
 
-### Task 4.4 — Add immunity status display
+### Task 4.4 — Add immunity status display via HUD
 
-Show immunity status in the HUD or as a buff icon:
+Uses Hytale's `HudManager` to show immunity countdown on the player's HUD:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.ui
 
-object ImmunityStatusDisplay {
+class ImmunityHudDisplay(
+    private val deathPenaltyService: DeathPenaltyService,
+    private val deathPenaltyConfig: DeathPenaltyConfig
+) {
+    // Called from Hexweave tick system to update HUD each tick
+    fun updateImmunityDisplay(ctx: HexweaveTickContext) {
+        if (!deathPenaltyConfig.showImmunityInHud) return
+        val playerRef = ctx.playerRef
 
-    fun updateImmunityDisplay(playerRef: /* PlayerRef */) {
-        val hasImmunity = DeathPenaltyService.hasImmunity(playerRef)
-
-        if (hasImmunity) {
-            val seconds = DeathPenaltyService.getRemainingImmunitySeconds(playerRef)
+        if (deathPenaltyService.hasImmunity(playerRef)) {
+            val seconds = deathPenaltyService.getRemainingImmunitySeconds(playerRef)
             val minutes = seconds / 60
             val secs = seconds % 60
             val timeStr = "${minutes}:${secs.toString().padStart(2, '0')}"
-
-            // Show "No Skill Drain" buff/status
-            // Implementation depends on Hytale's buff/status API
-            showStatusEffect(playerRef, "No Skill Drain", timeStr)
-        } else {
-            hideStatusEffect(playerRef, "No Skill Drain")
+            // Show via HudManager — exact API TBD
+            // HudManager.showStatus(playerRef, "No Skill Drain: $timeStr")
         }
-    }
-
-    private fun showStatusEffect(playerRef: /* PlayerRef */, name: String, duration: String) {
-        // TODO: Use Hytale's status effect or HUD API
-    }
-
-    private fun hideStatusEffect(playerRef: /* PlayerRef */, name: String) {
-        // TODO: Use Hytale's status effect or HUD API
     }
 }
 ```
 
+> **Note:** `HudManager` is a confirmed Hytale API for managing HUD elements. Exact usage for status text/icons needs further research.
+
 ### Task 4.5 — Add `/skills immunity` subcommand
 
-```kotlin
-command("skills", "Skill commands") {
-    subcommand("immunity", "Check death immunity status") {
-        executes { ctx ->
-            val playerRef = ctx.senderAsPlayerRef()
-            val hasImmunity = DeathPenaltyService.hasImmunity(playerRef)
+Uses `AbstractPlayerCommand` for thread-safe ECS access:
 
-            val message = if (hasImmunity) {
-                val seconds = DeathPenaltyService.getRemainingImmunitySeconds(playerRef)
-                "§aNo Skill Drain active: ${seconds}s remaining"
-            } else {
-                "§7No immunity active. Death will reduce skills by 5%."
-            }
-            ctx.sendMessage(Message.raw(message))
+```kotlin
+// Registered as subcommand of /skills via AbstractCommandCollection
+class ImmunityCommand(
+    private val deathPenaltyService: DeathPenaltyService,
+    private val deathPenaltyConfig: DeathPenaltyConfig
+) : AbstractPlayerCommand() {
+    override fun execute(ctx: PlayerCommandContext) {
+        val playerRef = ctx.playerRef()
+        val hasImmunity = deathPenaltyService.hasImmunity(playerRef)
+
+        val message = if (hasImmunity) {
+            val seconds = deathPenaltyService.getRemainingImmunitySeconds(playerRef)
+            "No Skill Drain active: ${seconds}s remaining"
+        } else {
+            val pct = (deathPenaltyConfig.penaltyPercentage * 100).toInt()
+            "No immunity active. Death will reduce skills by $pct%."
         }
+        ctx.sendMessage(Message.raw(message))
     }
 }
 ```
@@ -233,12 +227,12 @@ command("skills", "Skill commands") {
 
 ### Penalty Calculation
 ```
-newLevel = floor(currentLevel * (1 - penaltyPercent))
+newLevel = floor(currentLevel * (1 - penaltyPercentage))
 
-With 5% penalty:
-- Level 100 → 95 (lose 5 levels)
-- Level 50 → 47 (lose ~3 levels)
-- Level 20 → 19 (lose 1 level)
+With 10% penalty (default):
+- Level 100 → 90 (lose 10 levels)
+- Level 50 → 45 (lose 5 levels)
+- Level 20 → 18 (lose 2 levels)
 - Level 10 → 9 (lose 1 level)
 - Level 5 → 4 (lose 1 level)
 - Level 1 → 0 (lose 1 level)
@@ -246,30 +240,38 @@ With 5% penalty:
 
 ### Immunity Period
 - Granted immediately after death penalty is applied
-- Lasts 10 minutes (configurable)
+- Lasts 5 minutes / 300 seconds (configurable via `immunityDurationSeconds`)
 - Prevents any skill loss during this period
-- Visual indicator shows remaining time
+- Immunity timestamp stored in `PlayerSkillsComponent.deathImmunityUntil` (persistent)
+- Visual indicator via `HudManager` shows remaining time
 
 ### Configuration Options
 ```json
 {
     "deathPenalty": {
         "enabled": true,
-        "penaltyPercent": 0.05,
-        "immunityDurationSeconds": 600
+        "penaltyPercentage": 0.1,
+        "immunityDurationSeconds": 300,
+        "showImmunityInHud": true
     }
 }
 ```
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm the following APIs against actual Hytale/Kytale SDK documentation:
+- [x] **DeathEvent** — `com.hypixel.hytale.server.core.modules.damage.DeathEvent`, registered via `getEventRegistry().register()`
+- [x] **DamageModule dependency** — Must add `"Hytale:DamageModule": "*"` to `manifest.json` `Dependencies`
+- [x] **HudManager** — Confirmed API for managing HUD elements (status display)
+- [x] **AbstractPlayerCommand** — Thread-safe ECS access for `/skills immunity` command
+- [x] **Persistent immunity** — `deathImmunityUntil: Long` in `PlayerSkillsComponent` survives restarts via `putComponent()`
 
-- [ ] **Death event** — Event type for when a player dies, including player reference and death cause
-- [ ] **Status effect / buff API** — How to show a visual status indicator (immunity timer) on the player's HUD
-- [ ] **Respawn event** — Whether there's a post-respawn event for showing death penalty notifications
+### Research Still Needed
+
+- [ ] **DeathEvent fields** — Exact fields available (entityRef, cause, killer, etc.)
+- [ ] **Post-respawn messaging** — How to send death penalty notification after player respawns
+- [ ] **HudManager usage** — Exact API for showing/hiding status text on player HUD
 
 ---
 
