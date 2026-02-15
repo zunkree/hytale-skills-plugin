@@ -79,4 +79,57 @@ class XpCurveTest {
         assertTrue(progress > 0.0, "Progress should be > 0")
         assertTrue(progress < 1.0, "Progress should be < 1")
     }
+
+    @Test
+    fun `levelProgress at exact level boundary returns 0`() {
+        val xpForLevel5 = xpCurve.cumulativeXpForLevel(5)
+        val progress = xpCurve.levelProgress(level = 5, totalXP = xpForLevel5, maxLevel = 100)
+        assertEquals(0.0, progress)
+    }
+
+    @Test
+    fun `levelProgress at halfway returns approximately 0_5`() {
+        val xpForLevel0 = xpCurve.cumulativeXpForLevel(0)
+        val xpForLevel1 = xpCurve.cumulativeXpForLevel(1)
+        val halfXp = xpForLevel0 + (xpForLevel1 - xpForLevel0) / 2.0
+        val progress = xpCurve.levelProgress(level = 0, totalXP = halfXp, maxLevel = 100)
+        assertEquals(0.5, progress, 0.001, "Halfway XP should give ~0.5 progress")
+    }
+
+    @Test
+    fun `levelProgress clamps negative xp to 0`() {
+        val progress = xpCurve.levelProgress(level = 0, totalXP = -10.0, maxLevel = 100)
+        assertEquals(0.0, progress)
+    }
+
+    @Test
+    fun `flat curve gives constant xp per level`() {
+        val flatConfig = XpConfig(xpScaleFactor = 0.0)
+        val flatCurve = XpCurve(flatConfig)
+        val xp1 = flatCurve.xpRequiredForLevel(1)
+        val xp50 = flatCurve.xpRequiredForLevel(50)
+        assertEquals(xp1, xp50, "Flat curve should have equal XP per level")
+    }
+
+    @Test
+    fun `cumulative xp increases monotonically`() {
+        for (level in 1..99) {
+            assertTrue(
+                xpCurve.cumulativeXpForLevel(level + 1) > xpCurve.cumulativeXpForLevel(level),
+                "Cumulative XP must increase at level $level",
+            )
+        }
+    }
+
+    private fun assertEquals(
+        expected: Double,
+        actual: Double,
+        delta: Double,
+        message: String,
+    ) {
+        assertTrue(
+            kotlin.math.abs(expected - actual) <= delta,
+            "$message: expected $expected, got $actual",
+        )
+    }
 }

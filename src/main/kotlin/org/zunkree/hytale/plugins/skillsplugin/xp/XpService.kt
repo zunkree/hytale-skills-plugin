@@ -18,28 +18,45 @@ data class LevelUpResult(
     val newLevel: Int,
 )
 
-fun computeLevelUp(
+internal data class XpGrantResult(
+    val newLevel: Int,
+    val newTotalXP: Double,
+    val levelUp: LevelUpResult?,
+)
+
+internal fun computeXpGrant(
     currentLevel: Int,
-    currentXp: Double,
-    xpGain: Double,
+    currentTotalXP: Double,
+    skillType: SkillType,
+    baseXp: Double,
     maxLevel: Int,
     xpCurve: XpCurve,
-): LevelUpResult? {
+    isRested: Boolean = false,
+): XpGrantResult? {
     if (currentLevel >= maxLevel) return null
-    val newTotalXp = currentXp + xpGain
+
+    val xpGain = xpCurve.calculateXpGain(baseXp, isRested)
+    val newTotalXP = currentTotalXP + xpGain
+
     var newLevel = currentLevel
+
     while (newLevel < maxLevel) {
-        if (newTotalXp >= xpCurve.cumulativeXpForLevel(newLevel + 1)) {
+        val xpForNext = xpCurve.cumulativeXpForLevel(newLevel + 1)
+        if (newTotalXP >= xpForNext) {
             newLevel++
         } else {
             break
         }
     }
-    return if (newLevel > currentLevel) {
-        LevelUpResult(SkillType.SWORDS, currentLevel, newLevel) // skillType set by caller
-    } else {
-        null
-    }
+
+    val levelUp =
+        if (newLevel > currentLevel) {
+            LevelUpResult(skillType, currentLevel, newLevel)
+        } else {
+            null
+        }
+
+    return XpGrantResult(newLevel, newTotalXP, levelUp)
 }
 
 class XpService(
@@ -62,32 +79,22 @@ class XpService(
                 }
         val skillData = skills.getSkill(skillType)
 
-        if (skillData.level >= generalConfig.maxLevel) {
-            return null
-        }
+        if (skillData.level >= generalConfig.maxLevel) return null
 
-        val xpGain = xpCurve.calculateXpGain(baseXp, isRested)
-        skillData.totalXP += xpGain
+        val result =
+            computeXpGrant(
+                skillData.level,
+                skillData.totalXP,
+                skillType,
+                baseXp,
+                generalConfig.maxLevel,
+                xpCurve,
+                isRested,
+            ) ?: return null
 
-        val oldLevel = skillData.level
-        var newLevel = oldLevel
-
-        while (newLevel < generalConfig.maxLevel) {
-            val xpForNext = xpCurve.cumulativeXpForLevel(newLevel + 1)
-            if (skillData.totalXP >= xpForNext) {
-                newLevel++
-            } else {
-                break
-            }
-        }
-
-        skillData.level = newLevel
-
-        return if (newLevel > oldLevel) {
-            LevelUpResult(skillType, oldLevel, newLevel)
-        } else {
-            null
-        }
+        skillData.level = result.newLevel
+        skillData.totalXP = result.newTotalXP
+        return result.levelUp
     }
 
     fun grantXpAndSave(
@@ -97,10 +104,12 @@ class XpService(
         commandBuffer: CommandBuffer<EntityStore>,
         isRested: Boolean = false,
     ) {
-        val result = grantXp(playerRef, skillType, baseXp, isRested) ?: return
+        val levelUp = grantXp(playerRef, skillType, baseXp, isRested)
         val skills = skillRepository.getPlayerSkills(playerRef) ?: return
         skillRepository.savePlayerSkills(playerRef, skills, commandBuffer)
-        notifyLevelUp(playerRef, result)
+        if (levelUp != null) {
+            notifyLevelUp(playerRef, levelUp)
+        }
     }
 
     fun notifyLevelUp(

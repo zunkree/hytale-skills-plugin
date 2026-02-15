@@ -1,24 +1,26 @@
 package org.zunkree.hytale.plugins.skillsplugin
 
-import aster.amo.hexweave.enableHexweave
 import aster.amo.kytale.KotlinPlugin
 import aster.amo.kytale.dsl.command
 import aster.amo.kytale.dsl.event
 import aster.amo.kytale.dsl.jsonConfig
 import aster.amo.kytale.extension.componentType
+import aster.amo.kytale.extension.debug
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.component.Ref
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType
 import com.hypixel.hytale.server.core.asset.type.item.config.Item
-import com.hypixel.hytale.server.core.event.events.ecs.DamageBlockEvent
 import com.hypixel.hytale.server.core.event.events.player.PlayerDisconnectEvent
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent
-import com.hypixel.hytale.server.core.modules.entity.damage.DamageSystems
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
-import com.hypixel.hytale.server.core.universe.PlayerRef
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import org.zunkree.hytale.plugins.skillsplugin.command.SkillsCommandHandler
 import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfig
+import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfigValidator
+import org.zunkree.hytale.plugins.skillsplugin.effect.CombatEffectApplier
+import org.zunkree.hytale.plugins.skillsplugin.effect.GatheringEffectApplier
+import org.zunkree.hytale.plugins.skillsplugin.effect.MovementEffectApplier
+import org.zunkree.hytale.plugins.skillsplugin.effect.SkillEffectCalculator
+import org.zunkree.hytale.plugins.skillsplugin.effect.StatEffectApplier
 import org.zunkree.hytale.plugins.skillsplugin.listener.BlockingListener
 import org.zunkree.hytale.plugins.skillsplugin.listener.CombatListener
 import org.zunkree.hytale.plugins.skillsplugin.listener.HarvestListener
@@ -29,6 +31,8 @@ import org.zunkree.hytale.plugins.skillsplugin.resolver.BlockSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.resolver.MovementXpPolicy
 import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent
+import org.zunkree.hytale.plugins.skillsplugin.system.CombatXpDamageSystem
+import org.zunkree.hytale.plugins.skillsplugin.system.SkillEffectDamageSystem
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpCurve
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
 import java.util.UUID
@@ -37,23 +41,17 @@ import java.util.concurrent.ConcurrentHashMap
 class SkillsPlugin(
     init: JavaPluginInit,
 ) : KotlinPlugin(init) {
-    companion object {
-        lateinit var instance: SkillsPlugin
-            private set
-    }
-
     val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }
     val activePlayers = ConcurrentHashMap<UUID, Ref<EntityStore>>()
     private lateinit var skillRepository: SkillRepository
 
     override fun setup() {
         super.setup()
-        instance = this
 
         val version = pluginVersion()
         logger.info { "HytaleSkills v$version loading..." }
 
-        validateConfig()
+        SkillsConfigValidator.validate(config)
 
         // Composition root: wire all dependencies
         val xpCurve = XpCurve(config.xp)
@@ -71,36 +69,31 @@ class SkillsPlugin(
         val playerLifecycleListener = PlayerLifecycleListener(skillRepository, activePlayers, logger)
         val commandHandler = SkillsCommandHandler(skillRepository, xpCurve, config.general, logger)
 
+        val effectCalculator = SkillEffectCalculator(config.skillEffects, config.general.maxLevel)
+        val combatEffectApplier = CombatEffectApplier(skillRepository, effectCalculator, weaponSkillResolver, logger)
+        val movementEffectApplier = MovementEffectApplier(skillRepository, effectCalculator, logger)
+        val statEffectApplier = StatEffectApplier(skillRepository, effectCalculator, logger)
+        val gatheringEffectApplier =
+            GatheringEffectApplier(skillRepository, effectCalculator, blockSkillResolver, logger)
+
         event<PlayerReadyEvent> { event -> playerLifecycleListener.onPlayerReady(event) }
 
         event<PlayerDisconnectEvent> { event ->
             playerLifecycleListener.onPlayerDisconnect(event)
             movementListener.onPlayerDisconnect(event)
+            movementEffectApplier.onPlayerDisconnect(event.playerRef.uuid)
         }
 
-        enableHexweave {
-            systems {
-                damageSystem("skills-combat-xp") {
-                    dependencies { after<DamageSystems.ApplyDamage>() }
-                    filter { !it.isCancelled }
-                    onDamage {
-                        combatListener.onPlayerDealDamage(this)
-                        blockingListener.onPlayerBlock(this)
-                    }
-                }
+        entityStoreRegistry.registerSystem(SkillEffectDamageSystem(combatEffectApplier, logger))
+        entityStoreRegistry.registerSystem(CombatXpDamageSystem(combatListener, blockingListener, logger))
 
-                entityEventSystem<EntityStore, DamageBlockEvent>("skills-gathering-xp") {
-                    query { componentType<PlayerRef>() }
-                    filter { it.blockType != BlockType.EMPTY }
-                    onEvent { harvestListener.onPlayerDamageBlock(this) }
-                }
-
-                tickSystem("skills-movement-xp") {
-                    query { componentType<PlayerRef>() }
-                    onTick { movementListener.onTick(this) }
-                }
-            }
-        }
+        registerHexweaveSystems(
+            gatheringEffectApplier,
+            movementEffectApplier,
+            statEffectApplier,
+            harvestListener,
+            movementListener,
+        )
 
         command("skills", "View your skill levels") {
             executesSync { ctx -> commandHandler.handleSkillsCommand(ctx) }
@@ -122,7 +115,7 @@ class SkillsPlugin(
         val allItems = Item.getAssetMap().getAssetMap()
         val weaponItems = allItems.filter { (_, item) -> item.weapon != null }
         weaponItems.forEach { (id, item) ->
-            logger.info { "Weapon: $id, categories: ${item.categories?.toList()}" }
+            logger.debug { "Weapon: $id, categories: ${item.categories?.toList()}" }
         }
 
         logger.info { "HytaleSkills started." }
@@ -136,26 +129,6 @@ class SkillsPlugin(
         }
         activePlayers.clear()
         super.shutdown()
-    }
-
-    private fun validateConfig() {
-        with(config.general) {
-            require(maxLevel > 0) { "maxLevel must be > 0, got $maxLevel" }
-        }
-        with(config.xp) {
-            require(baseXpPerAction > 0) { "baseXpPerAction must be > 0, got $baseXpPerAction" }
-            require(xpScaleFactor >= 0) { "xpScaleFactor must be >= 0, got $xpScaleFactor" }
-            require(globalXpMultiplier > 0) { "globalXpMultiplier must be > 0, got $globalXpMultiplier" }
-            require(restedBonusMultiplier >= 1.0) { "restedBonusMultiplier must be >= 1.0, got $restedBonusMultiplier" }
-        }
-        with(config.deathPenalty) {
-            require(penaltyPercentage in 0.0..1.0) {
-                "penaltyPercentage must be in 0.0..1.0, got $penaltyPercentage"
-            }
-            require(immunityDurationSeconds >= 0) {
-                "immunityDurationSeconds must be >= 0, got $immunityDurationSeconds"
-            }
-        }
     }
 
     fun pluginVersion(): String = manifest.version.toString()

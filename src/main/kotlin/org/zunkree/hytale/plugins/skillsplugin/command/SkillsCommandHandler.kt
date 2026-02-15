@@ -2,7 +2,6 @@ package org.zunkree.hytale.plugins.skillsplugin.command
 
 import aster.amo.kytale.extension.debug
 import aster.amo.kytale.extension.error
-import aster.amo.kytale.extension.info
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.Message
 import com.hypixel.hytale.server.core.command.system.CommandContext
@@ -22,7 +21,7 @@ class SkillsCommandHandler(
             ctx.sendMessage(Message.raw("Only players can use this command."))
             return
         }
-        logger.info { "Player executed /skills command." }
+        logger.debug { "Player executed /skills command." }
 
         val player = ctx.sender() as Player
         val world =
@@ -40,7 +39,7 @@ class SkillsCommandHandler(
                     return@execute
                 }
             val skills = skillRepository.getPlayerSkills(playerRef)
-            logger.info { "Fetched skills for ${player.displayName}: ${skills?.skills?.keys ?: "No skills"}" }
+            logger.debug { "Fetched skills for ${player.displayName}: ${skills?.skills?.keys ?: "No skills"}" }
 
             val message =
                 buildString {

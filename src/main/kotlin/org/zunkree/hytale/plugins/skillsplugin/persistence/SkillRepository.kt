@@ -13,51 +13,51 @@ import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 class SkillRepository(
     private val logger: HytaleLogger,
 ) {
-    fun getPlayerSkills(playerRef: Ref<EntityStore>): PlayerSkillsComponent? {
-        logger.debug { "Loading player skills from $playerRef" }
-        return playerRef.store.getComponent(playerRef, componentType<PlayerSkillsComponent>())
+    fun getPlayerSkills(ref: Ref<EntityStore>): PlayerSkillsComponent? {
+        logger.debug { "Loading player skills from $ref" }
+        return ref.store.getComponent(ref, componentType<PlayerSkillsComponent>())
     }
 
     fun savePlayerSkills(
-        playerRef: Ref<EntityStore>,
+        ref: Ref<EntityStore>,
         skills: PlayerSkillsComponent,
     ) {
-        logger.debug { "Saving player skills to $playerRef" }
-        playerRef.store.putComponent(playerRef, componentType<PlayerSkillsComponent>(), skills)
+        logger.debug { "Saving player skills to $ref" }
+        ref.store.putComponent(ref, componentType<PlayerSkillsComponent>(), skills)
     }
 
     fun savePlayerSkills(
-        playerRef: Ref<EntityStore>,
+        ref: Ref<EntityStore>,
         skills: PlayerSkillsComponent,
         commandBuffer: CommandBuffer<EntityStore>,
     ) {
-        logger.debug { "Saving player skills via command buffer to $playerRef" }
-        commandBuffer.putComponent(playerRef, componentType<PlayerSkillsComponent>(), skills)
+        logger.debug { "Saving player skills via command buffer to $ref" }
+        commandBuffer.putComponent(ref, componentType<PlayerSkillsComponent>(), skills)
     }
 
     fun getSkillLevel(
-        playerRef: Ref<EntityStore>,
+        ref: Ref<EntityStore>,
         skillType: SkillType,
-    ): Int {
-        logger.debug { "Retrieving skill level for ${skillType.name} from $playerRef" }
+    ): Int? {
+        logger.debug { "Retrieving skill level for ${skillType.name} from $ref" }
         val skills =
-            getPlayerSkills(playerRef) ?: run {
-                logger.debug { "Failed to load player skills from $playerRef" }
-                return 0
+            getPlayerSkills(ref) ?: run {
+                logger.debug { "No player skills found for $ref" }
+                return null
             }
         return skills.getSkill(skillType).level
     }
 
     fun getSkillData(
-        playerRef: Ref<EntityStore>,
+        ref: Ref<EntityStore>,
         skillType: SkillType,
-    ): SkillData {
-        logger.debug { "Retrieving skill data for ${skillType.name} from $playerRef" }
+    ): SkillData? {
+        logger.debug { "Retrieving skill data for ${skillType.name} from $ref" }
         val skills =
-            getPlayerSkills(playerRef)
+            getPlayerSkills(ref)
                 ?: run {
-                    logger.debug { "Failed to load player skills from $playerRef" }
-                    return SkillData()
+                    logger.debug { "No player skills found for $ref" }
+                    return null
                 }
         return skills.getSkill(skillType)
     }

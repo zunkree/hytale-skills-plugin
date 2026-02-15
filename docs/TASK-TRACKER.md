@@ -1,6 +1,6 @@
 # Task Tracker
 
-## Current Phase: 3 - Skill Effects
+## Current Phase: 4 - Death Penalty
 
 ### Phase 0 Tasks (Setup) — Complete
 - [x] Initialize Gradle project structure
@@ -31,23 +31,25 @@
 - [x] Verify config loading and defaults
 
 ### Phase 2 Tasks (XP Progression) — Complete
-- [x] Research event/listener APIs (Hexweave damage, DamageBlockEvent, tick system)
+- [x] Research event/listener APIs (DamageEventSystem, DamageBlockEvent, tick system)
 - [x] Create XpCurve (class with constructor injection)
 - [x] Create XpService (grantXp, grantXpAndSave with CommandBuffer)
-- [x] Create CombatListener (Hexweave damage system + WeaponSkillResolver)
+- [x] Create CombatListener (DamageEventSystem + WeaponSkillResolver)
 - [x] Create HarvestListener (DamageBlockEvent + BlockSkillResolver)
-- [x] Create MovementListener (Hexweave tick system with cooldowns)
-- [x] Create BlockingListener (Hexweave damage system, target side)
-- [x] Register listeners in plugin setup (3 patterns: Hexweave, EntityEventSystem, EventRegistry)
+- [x] Create MovementListener (tick system with cooldowns)
+- [x] Create BlockingListener (DamageEventSystem, target side)
+- [x] Register listeners in plugin setup (4 patterns: DamageEventSystem, Hexweave, EntityEventSystem, EventRegistry)
 - [x] Level-up notifications via player.sendMessage()
 - [x] Rested bonus implementation via XpCurve.calculateXpGain()
 
-### Phase 3 Tasks (Skill Effects)
-- [ ] Create SkillEffectCalculator (config-driven, linear interpolation)
-- [ ] Create SkillEffectApplier (damage, block power, movement, stamina via Hexweave)
-- [ ] Create GatheringEffectApplier (mining/woodcutting speed via DamageBlockEvent)
-- [ ] Register effect systems (before ApplyDamage for effects, after for XP)
-- [ ] Test all effect types
+### Phase 3 Tasks (Skill Effects) — Complete
+- [x] Create SkillEffectCalculator (config-driven, linear interpolation)
+- [x] Create CombatEffectApplier (damage, blocking stamina via Damage.STAMINA_DRAIN_MULTIPLIER MetaKey)
+- [x] Create MovementEffectApplier (speed, jump force via MovementManager)
+- [x] Create StatEffectApplier (stamina, oxygen via EntityStatMap modifiers)
+- [x] Create GatheringEffectApplier (mining/woodcutting speed via DamageBlockEvent)
+- [x] Register effect systems (before ApplyDamage for effects, after for XP)
+- [x] Test all effect types
 
 ### Phase 4 Tasks (Death Penalty)
 - [ ] Create DeathPenaltyService (constructor injection, persistent immunity)
@@ -84,7 +86,10 @@
 | `Ref<EntityStore>` | Player entity reference | 1 |
 | `CommandBuffer<EntityStore>` | Batched ECS writes in event handlers | 1, 2 |
 | `jsonConfig<T>()` | Plugin configuration | 1.5 |
-| `enableHexweave {}` | Damage and tick systems | 2, 3 |
+| `DamageEventSystem` subclasses | Combat damage systems (before/after ApplyDamage) | 2, 3 |
+| `enableHexweave {}` | Entity event and tick systems | 2, 3 |
+| `Damage.BLOCKED` / `STAMINA_DRAIN_MULTIPLIER` | Blocking detection + stamina MetaKeys | 3 |
+| `Damage.getAmount()` / `setAmount()` | Read/modify damage amount | 3 |
 | `DamageBlockEvent` / `EntityEventSystem` | Gathering events | 2, 3 |
 | `getEventRegistry().register()` | Standard event registration | 2, 4 |
 | `DeathEvent` (DamageModule) | Death penalty trigger | 4 |
@@ -101,5 +106,9 @@
 - All numeric values are `Double` (not Float)
 - SkillType has 15 entries with `categories: Set<SkillCategory>`
 - Death penalty: 10% default, 300s immunity, persistent via ECS
-- Three event registration patterns: Hexweave, EntityEventSystem, EventRegistry
+- Four event registration patterns: custom DamageEventSystem subclasses, Hexweave (entity events + ticks), EntityEventSystem, EventRegistry
 - CI runs quality checks only (ktlint + detekt) — no compilation (HytaleServer.jar unavailable in CI)
+- Damage pipeline order: gatherDamageGroup → filterDamageGroup (blocking/armor) → inspectDamageGroup → ApplyDamage
+- Blocking is all-or-nothing (DamageModifiers = 0); stamina is the real cost (`damage / StaminaCost.Value`); plugin reduces blocking stamina via `Damage.STAMINA_DRAIN_MULTIPLIER` MetaKey
+- `Damage` MetaKeys: `BLOCKED` (Boolean), `STAMINA_DRAIN_MULTIPLIER` (Float), `HIT_LOCATION`, `HIT_ANGLE`, `KNOCKBACK_COMPONENT`
+- `DamageClass` enum: UNKNOWN, LIGHT, CHARGED, SIGNATURE

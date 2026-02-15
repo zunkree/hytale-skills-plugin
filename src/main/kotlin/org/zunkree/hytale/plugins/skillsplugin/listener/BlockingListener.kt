@@ -1,11 +1,11 @@
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import aster.amo.hexweave.dsl.mechanics.HexweaveDamageContext
 import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage
 import org.zunkree.hytale.plugins.skillsplugin.config.ActionXpConfig
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
+import org.zunkree.hytale.plugins.skillsplugin.system.DamageContext
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
 
 class BlockingListener(
@@ -13,7 +13,7 @@ class BlockingListener(
     private val actionXpConfig: ActionXpConfig,
     private val logger: HytaleLogger,
 ) {
-    fun onPlayerBlock(ctx: HexweaveDamageContext) {
+    fun onPlayerBlock(ctx: DamageContext) {
         logger.debug { "Processing damage for blocking XP..." }
         val ref =
             ctx.playerRef?.reference ?: run {

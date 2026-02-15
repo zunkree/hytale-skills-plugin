@@ -1,5 +1,6 @@
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
+import aster.amo.kytale.extension.debug
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.component.Ref
 import com.hypixel.hytale.logger.HytaleLogger
@@ -19,13 +20,13 @@ class PlayerLifecycleListener(
     fun onPlayerReady(event: PlayerReadyEvent) {
         val playerRef = event.playerRef
 
-        logger.info { "Fetching skills for ${event.player.displayName}:${event.player.uuid}" }
+        logger.debug { "Fetching skills for ${event.player.displayName}:${event.player.uuid}" }
         if (skillRepository.getPlayerSkills(playerRef) == null) {
             logger.info {
                 "No skills found for ${event.player.displayName}:${event.player.uuid}, initializing."
             }
             skillRepository.savePlayerSkills(playerRef, PlayerSkillsComponent())
-            logger.info { "Initialized skills for ${event.player.displayName}:${event.player.uuid}" }
+            logger.debug { "Initialized skills for ${event.player.displayName}:${event.player.uuid}" }
         }
 
         val uuid = event.player.uuid ?: return

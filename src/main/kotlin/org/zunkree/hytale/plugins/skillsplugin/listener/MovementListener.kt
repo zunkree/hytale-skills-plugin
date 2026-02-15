@@ -15,22 +15,20 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.sqrt
 
+private fun Vector3d.distanceTo(other: Vector3d): Double {
+    val dx = x - other.x
+    val dy = y - other.y
+    val dz = z - other.z
+    return sqrt(dx * dx + dy * dy + dz * dz)
+}
+
 class MovementListener(
     private val xpService: XpService,
     private val movementXpPolicy: MovementXpPolicy,
     private val logger: HytaleLogger,
 ) {
-    companion object {
-        private val lastPositions = ConcurrentHashMap<UUID, Vector3d>()
-        private val prevJumping = ConcurrentHashMap<UUID, Boolean>()
-
-        private fun Vector3d.distanceTo(other: Vector3d): Double {
-            val dx = x - other.x
-            val dy = y - other.y
-            val dz = z - other.z
-            return sqrt(dx * dx + dy * dy + dz * dz)
-        }
-    }
+    private val lastPositions = ConcurrentHashMap<UUID, Vector3d>()
+    private val prevJumping = ConcurrentHashMap<UUID, Boolean>()
 
     fun onTick(ctx: TickContext) {
         val ref = ctx.chunk.getReferenceTo(ctx.index)

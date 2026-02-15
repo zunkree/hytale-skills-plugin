@@ -1,6 +1,5 @@
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import aster.amo.hexweave.dsl.mechanics.HexweaveDamageContext
 import aster.amo.kytale.extension.componentType
 import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.logger.HytaleLogger
@@ -10,6 +9,7 @@ import com.hypixel.hytale.server.core.modules.entity.damage.DamageCause
 import org.zunkree.hytale.plugins.skillsplugin.config.ActionXpConfig
 import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
+import org.zunkree.hytale.plugins.skillsplugin.system.DamageContext
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
 
 class CombatListener(
@@ -18,15 +18,15 @@ class CombatListener(
     private val weaponSkillResolver: WeaponSkillResolver,
     private val logger: HytaleLogger,
 ) {
-    fun onPlayerDealDamage(ctx: HexweaveDamageContext) {
+    fun onPlayerDealDamage(ctx: DamageContext) {
         val cause =
             DamageCause.getAssetMap().getAsset(ctx.damage.damageCauseIndex) ?: run {
-                ctx.logger.debug { "Unknown damage cause index: ${ctx.damage.damageCauseIndex}" }
+                logger.debug { "Unknown damage cause index: ${ctx.damage.damageCauseIndex}" }
                 return
             }
 
         if (cause.id != "PHYSICAL" && cause.id != "PROJECTILE") {
-            ctx.logger.debug { "Damage cause $cause is not physical or projectile, skipping combat XP processing" }
+            logger.debug { "Damage cause $cause is not physical or projectile, skipping combat XP processing" }
             return
         }
 
@@ -40,7 +40,7 @@ class CombatListener(
                 ?: SkillType.UNARMED
 
         val baseXp = ctx.damage.initialAmount * actionXpConfig.combatDamageMultiplier
-        ctx.logger.debug { "Granting $skillType XP: $baseXp for ${player.displayName}" }
+        logger.debug { "Granting $skillType XP: $baseXp for ${player.displayName}" }
 
         xpService.grantXpAndSave(ref, skillType, baseXp, ctx.commandBuffer)
     }

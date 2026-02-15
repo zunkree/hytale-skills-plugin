@@ -94,7 +94,7 @@ data class LevelUpResult(val skillType: SkillType, val oldLevel: Int, val newLev
 
 ### Task 2.3 — Create `CombatListener.kt`
 
-Uses Kytale's Hexweave damage system (runs after `DamageSystems.ApplyDamage`):
+Uses `CombatXpDamageSystem` (custom `DamageEventSystem` subclass, runs after `DamageSystems.ApplyDamage`):
 
 ```kotlin
 class CombatListener(
@@ -103,7 +103,7 @@ class CombatListener(
     private val weaponSkillResolver: WeaponSkillResolver,
     private val logger: HytaleLogger
 ) {
-    fun onPlayerDealDamage(ctx: HexweaveDamageContext) {
+    fun onPlayerDealDamage(ctx: DamageContext) {
         // Filter: only PHYSICAL/PROJECTILE damage from players
         val playerRef = ctx.source?.playerRef ?: return
         val itemId = ctx.source?.itemInHand?.id ?: ""
@@ -154,7 +154,7 @@ class HarvestListener(
 
 ### Task 2.5 — Create `MovementListener.kt`
 
-Uses Hexweave tick system for periodic movement XP tracking with cooldowns:
+Uses Hexweave tick system for periodic movement XP tracking with cooldowns (tick systems still use Hexweave):
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
@@ -178,8 +178,8 @@ class MovementListener(
         const val MOVEMENT_XP_COOLDOWN = 1000L // 1 second between XP grants
     }
 
-    // Called from Hexweave tick system for each online player
-    fun onPlayerTick(ctx: HexweaveTickContext) {
+    // Called from tick system for each online player
+    fun onPlayerTick(ctx: TickContext) {
         val playerRef = ctx.playerRef
         val playerId = ctx.playerId
         val now = System.currentTimeMillis()
@@ -210,7 +210,7 @@ class MovementListener(
     }
 
     // Jumping XP — triggered by jump event, not tick
-    fun onPlayerJump(ctx: HexweaveTickContext) {
+    fun onPlayerJump(ctx: TickContext) {
         xpService.grantXpAndSave(ctx.commandBuffer, ctx.playerRef,
             SkillType.JUMPING, actionXpConfig.jumpingPerJumpMultiplier)
     }
@@ -231,11 +231,11 @@ class MovementListener(
 }
 ```
 
-> **Architecture:** `MovementListener` uses the Hexweave tick system (not event-based). Player state (sprinting, swimming, sneaking, submerged) is queried each tick. Cooldowns prevent XP spam. `clearCooldowns()` called on player disconnect.
+> **Architecture:** `MovementListener` uses the tick system (not event-based). Player state (sprinting, swimming, sneaking, submerged) is queried each tick. Cooldowns prevent XP spam. `clearCooldowns()` called on player disconnect.
 
 ### Task 2.6 — Create `BlockingListener.kt`
 
-Uses Hexweave damage system to detect blocked damage:
+Uses `CombatXpDamageSystem` to detect blocked damage:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.listener
@@ -245,7 +245,7 @@ class BlockingListener(
     private val actionXpConfig: ActionXpConfig,
     private val logger: HytaleLogger
 ) {
-    fun onPlayerBlockDamage(ctx: HexweaveDamageContext) {
+    fun onPlayerBlockDamage(ctx: DamageContext) {
         // Filter: only damage blocked by a player (target is blocking)
         val playerRef = ctx.target?.playerRef ?: return
         val blockedAmount = ctx.blockedDamage ?: return
@@ -257,15 +257,16 @@ class BlockingListener(
 }
 ```
 
-> **Architecture:** `BlockingListener` hooks into the same Hexweave damage pipeline as `CombatListener`, but inspects the target (defender) side. `ctx.blockedDamage` represents the portion of damage absorbed by blocking.
+> **Architecture:** `BlockingListener` hooks into the same `CombatXpDamageSystem` damage pipeline as `CombatListener`, but inspects the target (defender) side. Both are called from a custom `DamageEventSystem` subclass running `after<ApplyDamage>()`.
 
 ### Task 2.7 — Register listeners in plugin setup
 
 Listeners are instantiated once in `SkillsPlugin.setup()` with dependencies injected. Event registration uses two patterns:
 
-1. **Hexweave** — for combat/blocking (damage pipeline) and movement (tick system)
-2. **EntityEventSystem** — for harvest (DamageBlockEvent is an ECS event)
-3. **Event registry** — for standard events (PlayerReadyEvent, PlayerDisconnectEvent)
+1. **Custom DamageEventSystem subclasses** — for combat/blocking (damage pipeline), registered via `entityStoreRegistry.registerSystem()`
+2. **Hexweave** — for entity events (gathering) and tick systems (movement)
+3. **EntityEventSystem** — for harvest (DamageBlockEvent is an ECS event)
+4. **Event registry** — for standard events (PlayerReadyEvent, PlayerDisconnectEvent)
 
 ```kotlin
 override fun setup() {
@@ -278,36 +279,26 @@ override fun setup() {
     val harvestListener = HarvestListener(xpService, config.xp.actionXp, blockSkillResolver, logger)
     val movementListener = MovementListener(xpService, config.xp.actionXp, movementXpPolicy, logger)
 
-    // Hexweave: combat + blocking (damage pipeline)
-    enableHexweave {
-        damageSystems {
-            after(DamageSystems.ApplyDamage) { ctx ->
-                combatListener.onPlayerDealDamage(ctx)
-                blockingListener.onPlayerBlockDamage(ctx)
-            }
-        }
-        tickSystems {
-            // Movement XP via tick
-            playerTick { ctx -> movementListener.onPlayerTick(ctx) }
-        }
-    }
+    // Damage systems: registered directly via Hytale API (not Hexweave)
+    entityStoreRegistry.registerSystem(SkillEffectDamageSystem(combatEffectApplier, logger))
+    entityStoreRegistry.registerSystem(CombatXpDamageSystem(combatListener, blockingListener, logger))
 
-    // ECS event: harvest (DamageBlockEvent)
-    EntityEventSystem<EntityStore, DamageBlockEvent> { ctx ->
-        harvestListener.onPlayerDamageBlock(ctx)
-    }
+    // Hexweave: entity events (gathering) + tick systems (movement)
+    registerHexweaveSystems(
+        gatheringEffectApplier, movementEffectApplier, statEffectApplier,
+        harvestListener, movementListener,
+    )
 
     // Standard events: player lifecycle
-    getEventRegistry().register(PlayerReadyEvent::class.java) { event ->
-        // Initialize component if needed
-    }
-    getEventRegistry().register(PlayerDisconnectEvent::class.java) { event ->
-        movementListener.clearCooldowns(event.playerId)
+    event<PlayerReadyEvent> { event -> playerLifecycleListener.onPlayerReady(event) }
+    event<PlayerDisconnectEvent> { event ->
+        playerLifecycleListener.onPlayerDisconnect(event)
+        movementListener.onPlayerDisconnect(event)
     }
 }
 ```
 
-> **Note:** Three event registration patterns are used: `enableHexweave {}` for damage/tick systems, `EntityEventSystem` for ECS events, and `getEventRegistry().register()` for standard lifecycle events.
+> **Note:** Four event registration patterns are used: custom `DamageEventSystem` subclasses for damage pipeline, `enableHexweave {}` for entity event/tick systems, `EntityEventSystem` for ECS events, and `event<T> {}` (Kytale DSL) for standard lifecycle events.
 
 ---
 
@@ -315,7 +306,7 @@ override fun setup() {
 
 | Skill         | Trigger         | Base XP              | Notes                   |
 |---------------|-----------------|----------------------|-------------------------|
-| Weapon skills | Deal damage     | damage * 0.1         | Per hit (Hexweave)      |
+| Weapon skills | Deal damage     | damage * 0.1         | Per hit (DamageEventSystem) |
 | Mining        | Damage ore/stone| damage * 1.0         | DamageBlockEvent        |
 | Woodcutting   | Damage wood     | damage * 1.0         | DamageBlockEvent        |
 | Running       | Sprint          | 0.1                  | 1s cooldown (tick)      |
@@ -323,16 +314,16 @@ override fun setup() {
 | Diving        | Submerge        | 0.1                  | 1s cooldown (tick)      |
 | Sneaking      | Sneak           | 0.1                  | 1s cooldown (tick)      |
 | Jumping       | Jump            | 0.5                  | Per jump                |
-| Blocking      | Block damage    | blocked * 0.05       | Per block (Hexweave)    |
+| Blocking      | Block damage    | blocked * 0.05       | Per block (DamageEventSystem) |
 
 ---
 
 ## Validated APIs
 
-- [x] **Hexweave damage system** — `enableHexweave { damageSystems { after(DamageSystems.ApplyDamage) { ctx -> } } }` for combat and blocking XP
-- [x] **Hexweave tick system** — `enableHexweave { tickSystems { playerTick { ctx -> } } }` for movement XP
+- [x] **DamageEventSystem** — Custom subclasses with `SystemDependency(Order.AFTER, DamageSystems.ApplyDamage::class.java)` for combat and blocking XP
+- [x] **Hexweave tick system** — `enableHexweave { systems { tickSystem("id") { onTick { } } } }` for movement XP
 - [x] **DamageBlockEvent** — ECS event via `EntityEventSystem<EntityStore, DamageBlockEvent>` for gathering XP
-- [x] **CommandBuffer** — `ctx.commandBuffer` available in Hexweave and EntityEvent contexts for batched component writes
+- [x] **CommandBuffer** — `ctx.commandBuffer` available in damage systems, Hexweave, and EntityEvent contexts for batched component writes
 - [x] **Event registry** — `getEventRegistry().register(EventClass::class.java) { }` for lifecycle events
 - [x] **Player messaging** — `player.sendMessage(Message.raw("text"))` for level-up notifications
 - [x] **WeaponSkillResolver** — Item ID prefixes (`Weapon_Sword`, `Weapon_Axe`, etc.) map to SkillType via hytaleitemids.com

@@ -55,8 +55,10 @@ dependencies {
     compileOnly("aster.amo:kytale:1.+")
     runtimeMods("aster.amo:kytale:1.+")
 
-    // Serialization runtime (needed for @Serializable config classes in tests)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1")
+    // Serialization runtime — must match the version bundled in Kytale's fat JAR
+    // to avoid AbstractMethodError on GeneratedSerializer.typeParametersSerializers()
+    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Testing
     testImplementation(kotlin("test"))
@@ -75,6 +77,26 @@ detekt {
 
 kover {
     reports {
+        filters {
+            excludes {
+                // Classes that depend on Hytale server types (compileOnly) and
+                // cannot be unit tested without a running server
+                classes(
+                    "org.zunkree.hytale.plugins.skillsplugin.SkillsPlugin",
+                    "org.zunkree.hytale.plugins.skillsplugin.HexweaveRegistrationKt",
+                    "org.zunkree.hytale.plugins.skillsplugin.system.*",
+                    "org.zunkree.hytale.plugins.skillsplugin.persistence.*",
+                    "org.zunkree.hytale.plugins.skillsplugin.listener.*",
+                    "org.zunkree.hytale.plugins.skillsplugin.command.*",
+                    "org.zunkree.hytale.plugins.skillsplugin.effect.CombatEffectApplier",
+                    "org.zunkree.hytale.plugins.skillsplugin.effect.MovementEffectApplier",
+                    "org.zunkree.hytale.plugins.skillsplugin.effect.StatEffectApplier",
+                    "org.zunkree.hytale.plugins.skillsplugin.effect.GatheringEffectApplier",
+                    "org.zunkree.hytale.plugins.skillsplugin.skill.PlayerSkillsComponent*",
+                    "org.zunkree.hytale.plugins.skillsplugin.skill.SkillData*",
+                )
+            }
+        }
         verify {
             rule {
                 minBound(50)

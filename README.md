@@ -4,13 +4,13 @@ A Hytale server plugin implementing a Valheim-inspired skill progression system.
 
 ## Skills
 
-13 skills across 3 categories:
+15 skills across 3 categories:
 
 | Category | Skills |
 |----------|--------|
-| Combat | Swords, Axes, Bows, Spears, Clubs, Unarmed, Blocking |
+| Combat | Swords, Daggers, Axes, Bows, Spears, Clubs, Unarmed, Blocking |
 | Gathering | Mining, Woodcutting |
-| Movement | Running, Swimming, Diving, Sneaking, Jumping |
+| Movement  | Running, Swimming, Diving, Sneaking, Jumping |
 
 All skills range from level 0 to 100. XP is gained by performing the associated action.
 
@@ -19,8 +19,10 @@ All skills range from level 0 to 100. XP is gained by performing the associated 
 ```
 org.zunkree.hytale.plugins.skillsplugin/
     SkillsPlugin.kt              # Entry point & composition root
+    HexweaveRegistration.kt      # Hexweave system wiring (extension function)
     config/
         SkillsConfig.kt          # All configuration data classes
+        SkillsConfigValidator.kt # Startup config validation
     skill/
         SkillType.kt             # Skill enum with categories and display names
         SkillCategory.kt         # COMBAT, GATHERING, MOVEMENT
@@ -29,6 +31,12 @@ org.zunkree.hytale.plugins.skillsplugin/
     xp/
         XpCurve.kt               # XP formulas: requirements, cumulative, level progress
         XpService.kt             # Grants XP, handles level-ups, death penalty
+    effect/
+        SkillEffectCalculator.kt # Config-driven linear interpolation for bonuses
+        CombatEffectApplier.kt   # Damage & blocking stamina modifiers
+        MovementEffectApplier.kt # Speed & jump force modifiers (per-player state)
+        StatEffectApplier.kt     # Stamina & oxygen stat modifiers
+        GatheringEffectApplier.kt # Mining/woodcutting speed modifiers
     resolver/
         WeaponSkillResolver.kt   # Item ID → combat SkillType (pure)
         BlockSkillResolver.kt    # Block ID → gathering SkillType (pure)

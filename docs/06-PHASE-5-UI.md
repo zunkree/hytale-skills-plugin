@@ -114,8 +114,8 @@ class SkillsUI(
                 "%.1fx damage".format(mult)
             }
             skillType == SkillType.BLOCKING -> {
-                val mult = effectCalculator.getBlockPowerMultiplier(level)
-                "%.1fx block power".format(mult)
+                val stamina = (effectCalculator.getStaminaReduction(skillType, level) * 100).toInt()
+                "-$stamina% blocking stamina"
             }
             skillType in listOf(SkillType.MINING, SkillType.WOODCUTTING) -> {
                 val mult = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
