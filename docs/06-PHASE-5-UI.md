@@ -19,9 +19,19 @@ Create a visual interface for players to view their skill levels, XP progress, a
 
 ## Tasks
 
-### Task 5.1 — Design UI layout
+### Task 5.1 — Create `.ui` layout file
 
-> **Important:** The XML syntax and UI API shown below are **illustrative pseudo-code** representing the desired layout and behavior. The actual Hytale UI system (file format, layout engine, templating, and Kotlin API) needs to be discovered from SDK documentation before implementation.
+Hytale uses **BSON `.ui` files** for UI layout definitions. These are placed in the plugin's asset pack or data directory and loaded server-side.
+
+The UI system uses two page types:
+- **`BasicCustomUIPage`** — Static display, data sent once when opened
+- **`InteractiveCustomUIPage`** — Supports callbacks via `UIEventBuilder`
+
+For the skills menu, use `InteractiveCustomUIPage` (close button needs callback).
+
+**Layout file:** `src/main/resources/ui/skills_menu.ui`
+
+> **Note:** The exact `.ui` file format (BSON structure, element types, layout properties) needs further research. The layout below represents the desired structure:
 
 **Desired layout elements:**
 - Full-screen page (~600x400)
@@ -31,198 +41,178 @@ Create a visual interface for players to view their skill levels, XP progress, a
 - Each skill row: name, current effect text, level number, XP progress bar
 - Close button in footer
 
-**Illustrative layout (pseudo-XML):**
-
-```xml
-<!-- PSEUDO-CODE — actual Hytale UI format TBD -->
-<page id="skills_menu" width="600" height="400">
-    <panel id="header" height="40" layout="horizontal" align="center">
-        <text id="title" text="Skills" font-size="24" color="#ffffff"/>
-        <spacer flex="1"/>
-        <text id="total_levels" text="Total: 0" font-size="16" color="#aaaaaa"/>
-    </panel>
-
-    <panel id="immunity_banner" height="30" visible="false" background="#2a5a2a">
-        <text id="immunity_text" text="No Skill Drain: 0:00" color="#66ff66" align="center"/>
-    </panel>
-
-    <scroll-panel id="skills_container" flex="1">
-        <!-- Categories populated dynamically from SkillCategory enum -->
-    </scroll-panel>
-
-    <panel id="footer" height="30">
-        <button id="close_btn" text="Close" width="100" on-click="close"/>
-    </panel>
-</page>
-
-<!-- Each skill rendered as a row with: name, effect text, level, XP bar -->
-```
-
 See the **UI Design Mockup** section below for the visual target.
 
 ### Task 5.2 — Create `SkillsUI.kt`
 
-> **Note:** The UI construction methods below (`createPage`, `createFromTemplate`, `showPage`, `setText`, `setProgress`, etc.) are **pseudo-code** representing the desired behavior. Actual implementation depends entirely on the Hytale UI API.
+Uses `InteractiveCustomUIPage` with `UICommandBuilder` for data and `UIEventBuilder` for callbacks:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.ui
 
-import org.zunkree.hytale.plugins.skillsplugin.skill.*
-import org.zunkree.hytale.plugins.skillsplugin.effect.SkillEffects
-import com.hypixel.hytale.component.Ref
+import com.hypixel.hytale.server.core.modules.entity.Ref
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 
-class SkillsUI(private val playerRef: Ref<EntityStore>) {
+class SkillsUI(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve,
+    private val effectCalculator: SkillEffectCalculator,
+    private val deathPenaltyService: DeathPenaltyService,
+    private val generalConfig: GeneralConfig
+) {
+    // InteractiveCustomUIPage loaded from .ui BSON file
+    private lateinit var page: InteractiveCustomUIPage
 
-    fun open() {
-        val skills = SkillManager.getPlayerSkills(playerRef)
-
-        // Create and configure UI page
-        val page = createPage("skills_menu")
-
-        // Set total levels
-        page.setText("total_levels", "Total: ${skills.getTotalLevels()}")
-
-        // Show immunity banner if active
-        if (DeathPenaltyService.hasImmunity(playerRef)) {
-            val seconds = DeathPenaltyService.getRemainingImmunitySeconds(playerRef)
-            val minutes = seconds / 60
-            val secs = seconds % 60
-            page.setVisible("immunity_banner", true)
-            page.setText("immunity_text", "No Skill Drain: ${minutes}:${secs.toString().padStart(2, '0')}")
-        }
-
-        // Populate skills by category
-        populateCategory(page, "weapon_skills", SkillCategory.WEAPON, skills)
-        populateCategory(page, "utility_skills", SkillCategory.UTILITY, skills)
-        populateCategory(page, "gathering_skills", SkillCategory.GATHERING, skills)
-        populateCategory(page, "movement_skills", SkillCategory.MOVEMENT, skills)
-
-        // Show to player
-        showPage(playerRef, page)
+    fun setup() {
+        // Load page from .ui file — exact loading API TBD
+        // page = InteractiveCustomUIPage.load("skills_menu")
     }
 
-    private fun populateCategory(
-        page: /* UIPage */,
-        containerId: String,
-        category: SkillCategory,
-        playerSkills: PlayerSkillsComponent
-    ) {
-        val categorySkills = SkillType.values().filter { it.category == category }
+    fun open(playerRef: Ref<EntityStore>) {
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return
 
-        for (skillType in categorySkills) {
-            val skillData = playerSkills.getSkill(skillType)
-            val effectText = getEffectDescription(skillType, skillData.level)
+        // Build UI data using UICommandBuilder
+        val uiData = UICommandBuilder().apply {
+            set("total_levels", skills.totalLevels.toString())
 
-            // Create skill row from template
-            val row = createFromTemplate("skill_row")
-            row.setText("skill_name", skillType.displayName)
-            row.setText("skill_level", "Lv. ${skillData.level}")
-            row.setText("skill_effect", effectText)
-            row.setProgress("skill_xp", skillData.getLevelProgress())
+            // Immunity banner
+            val hasImmunity = deathPenaltyService.hasImmunity(playerRef)
+            set("immunity_visible", hasImmunity)
+            if (hasImmunity) {
+                val seconds = deathPenaltyService.getRemainingImmunitySeconds(playerRef)
+                set("immunity_text", "No Skill Drain: ${formatTime(seconds)}")
+            }
 
-            page.addChild(containerId, row)
+            // Populate skills grouped by category
+            for (category in SkillCategory.entries) {
+                val categorySkills = SkillType.entries.filter { category in it.categories }
+                for (skillType in categorySkills) {
+                    val skillData = skills.getSkill(skillType)
+                    val progress = xpCurve.levelProgress(
+                        skillData.level, skillData.totalXP, generalConfig.maxSkillLevel
+                    )
+                    set("${skillType.name}_level", skillData.level.toString())
+                    set("${skillType.name}_progress", progress)
+                    set("${skillType.name}_effect", getEffectDescription(skillType, skillData.level))
+                }
+            }
         }
+
+        // Register close button callback via UIEventBuilder
+        val events = UIEventBuilder().apply {
+            on("close") { /* Close the UI page for the player */ }
+        }
+
+        // Show page to player — exact API TBD
+        // page.show(playerRef, uiData, events)
     }
 
     private fun getEffectDescription(skillType: SkillType, level: Int): String {
-        val config = SkillEffects.getConfig(skillType)
-
-        return when (skillType.category) {
-            SkillCategory.WEAPON -> {
-                val mult = config.getMultiplierAtLevel(level)
+        return when {
+            SkillCategory.WEAPON in skillType.categories -> {
+                val mult = effectCalculator.getDamageMultiplier(skillType, level)
                 "%.1fx damage".format(mult)
             }
-            SkillCategory.UTILITY -> {
-                when (skillType) {
-                    SkillType.BLOCKING -> {
-                        val mult = config.getMultiplierAtLevel(level)
-                        "%.1fx block power".format(mult)
-                    }
-                    else -> ""
-                }
+            skillType == SkillType.BLOCKING -> {
+                val mult = effectCalculator.getBlockPowerMultiplier(level)
+                "%.1fx block power".format(mult)
             }
-            SkillCategory.GATHERING -> {
-                val mult = config.getMultiplierAtLevel(level)
+            skillType in listOf(SkillType.MINING, SkillType.WOODCUTTING) -> {
+                val mult = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
                 "%.1fx speed".format(mult)
             }
-            SkillCategory.MOVEMENT -> {
-                when (skillType) {
-                    SkillType.RUNNING -> {
-                        val speed = (config.getSpeedBonusAtLevel(level) * 100).toInt()
-                        val stamina = (config.getStaminaReductionAtLevel(level) * 100).toInt()
-                        "+$speed% speed, -$stamina% stamina"
-                    }
-                    SkillType.SWIMMING, SkillType.SNEAKING -> {
-                        val stamina = (config.getStaminaReductionAtLevel(level) * 100).toInt()
-                        "-$stamina% stamina"
-                    }
-                    SkillType.JUMPING -> {
-                        val mult = config.getMultiplierAtLevel(level)
-                        "%.1fx height".format(mult)
-                    }
-                    else -> ""
-                }
+            skillType == SkillType.RUNNING -> {
+                val speed = (effectCalculator.getSpeedBonus(level) * 100).toInt()
+                val stamina = (effectCalculator.getStaminaReduction(skillType, level) * 100).toInt()
+                "+$speed% speed, -$stamina% stamina"
             }
+            skillType in listOf(SkillType.SWIMMING, SkillType.SNEAKING) -> {
+                val stamina = (effectCalculator.getStaminaReduction(skillType, level) * 100).toInt()
+                "-$stamina% stamina"
+            }
+            skillType == SkillType.JUMPING -> {
+                val mult = effectCalculator.getJumpHeightMultiplier(level)
+                "%.1fx height".format(mult)
+            }
+            else -> ""
         }
     }
 
-    // Placeholder methods - implement with Hytale UI API
-    private fun createPage(templateId: String): Any = TODO()
-    private fun createFromTemplate(templateId: String): Any = TODO()
-    private fun showPage(playerRef: Ref<EntityStore>, page: Any) = TODO()
+    private fun formatTime(seconds: Long): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return "$m:${s.toString().padStart(2, '0')}"
+    }
 }
 ```
+
+> **Architecture:** `SkillsUI` uses constructor injection. UI data is built with `UICommandBuilder` (key-value pairs sent to the `.ui` template). Callbacks use `UIEventBuilder`. The `.ui` BSON file defines the visual layout; the Kotlin code provides data and behavior.
 
 ### Task 5.3 — Update `/skills` command
 
+Uses `AbstractPlayerCommand` for thread-safe ECS access (required when reading components):
+
 ```kotlin
-command("skills", "View your skill levels") {
-    executesSync { ctx ->
-        val playerRef = ctx.senderAsPlayerRef()
-        SkillsUI(playerRef).open()
+// Main /skills command opens UI
+class SkillsCommand(private val skillsUI: SkillsUI) : AbstractPlayerCommand() {
+    override fun execute(ctx: PlayerCommandContext) {
+        skillsUI.open(ctx.playerRef())
     }
+}
 
-    subcommand("text", "Show skills as text") {
-        executes { ctx ->
-            // Original text-based output
-            val playerRef = ctx.senderAsPlayerRef()
-            val skills = SkillManager.getPlayerSkills(playerRef)
+// /skills text — fallback text-based display
+class SkillsTextCommand(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve,
+    private val generalConfig: GeneralConfig
+) : AbstractPlayerCommand() {
+    override fun execute(ctx: PlayerCommandContext) {
+        val playerRef = ctx.playerRef()
+        val skills = skillRepository.getPlayerSkills(playerRef) ?: return
 
-            val message = buildString {
-                appendLine("=== Your Skills (Total: ${skills.getTotalLevels()}) ===")
-                for (category in SkillCategory.values()) {
-                    appendLine("${category.displayName}:")
-                    SkillType.values()
-                        .filter { it.category == category }
-                        .forEach { skillType ->
-                            val data = skills.getSkill(skillType)
-                            val progress = (data.getLevelProgress() * 100).toInt()
-                            appendLine("  ${skillType.displayName}: Lv.${data.level} ($progress%)")
-                        }
-                }
+        val message = buildString {
+            appendLine("=== Your Skills (Total: ${skills.totalLevels}) ===")
+            for (category in SkillCategory.entries) {
+                appendLine("${category.displayName}:")
+                SkillType.entries
+                    .filter { category in it.categories }
+                    .forEach { skillType ->
+                        val data = skills.getSkill(skillType)
+                        val progress = (xpCurve.levelProgress(
+                            data.level, data.totalXP, generalConfig.maxSkillLevel
+                        ) * 100).toInt()
+                        appendLine("  ${skillType.displayName}: Lv.${data.level} ($progress%)")
+                    }
             }
-            ctx.sendMessage(Message.raw(message))
         }
+        ctx.sendMessage(Message.raw(message))
     }
+}
 
-    subcommand("immunity", "Check death immunity") {
-        // ... existing implementation
+// Registered via AbstractCommandCollection for subcommand routing
+class SkillsCommandCollection(
+    private val skillsCommand: SkillsCommand,
+    private val textCommand: SkillsTextCommand,
+    private val immunityCommand: ImmunityCommand
+    // ... admin commands added in Phase 6
+) : AbstractCommandCollection("skills", "Skill commands") {
+    override fun register() {
+        default(skillsCommand)          // /skills → opens UI
+        sub("text", textCommand)         // /skills text
+        sub("immunity", immunityCommand) // /skills immunity
     }
 }
 ```
 
+> **Architecture:** Commands use `AbstractPlayerCommand` (thread-safe ECS access on world thread) and `AbstractCommandCollection` (subcommand routing). This is the validated Hytale command pattern.
+
 ### Task 5.4 — Add keybind support (optional)
 
-If Hytale supports custom keybinds:
+Keybind registration API is unconfirmed. If available, register in `setup()`:
 
 ```kotlin
-// PSEUDO-CODE — keybind registration API is unconfirmed
-// In setup()
-registerKeybind("skills_menu", Key.K) { player ->
-    val playerRef = player.asPlayerRef()
-    SkillsUI(playerRef).open()
-}
+// TODO: Research keybind registration API
+// Possible pattern: registerKeybind("skills_menu", Key.K) { player -> skillsUI.open(player.ref()) }
 ```
 
 ---
@@ -259,17 +249,22 @@ registerKeybind("skills_menu", Key.K) { player ->
 
 ---
 
-## Research Required
+## Validated APIs
 
-This phase is the most API-dependent. Before implementing, confirm:
+- [x] **UI page types** — `BasicCustomUIPage` (static) and `InteractiveCustomUIPage` (with callbacks) confirmed
+- [x] **UI data binding** — `UICommandBuilder` for setting key-value data to send to `.ui` templates
+- [x] **UI callbacks** — `UIEventBuilder` for registering button click and interaction handlers
+- [x] **UI layout format** — `.ui` BSON files define layout structure (server-side, no client mod needed)
+- [x] **HudManager** — Manages persistent HUD elements (used for immunity display in Phase 4)
+- [x] **AbstractPlayerCommand** — Thread-safe ECS access for commands that read skill data
+- [x] **AbstractCommandCollection** — Subcommand routing for `/skills`, `/skills text`, `/skills immunity`
+- [x] **`ctx.senderAsPlayerRef()`** — Returns `Ref<EntityStore>` from command context
 
-- [ ] **UI file format** — What format Hytale uses for UI definitions (XML, JSON, Kotlin DSL, or something else)
-- [ ] **UI page creation** — How to create, populate, and show a full-screen UI to a player from server-side code
-- [ ] **Dynamic content** — How to populate UI elements dynamically (loops, templates, data binding)
-- [ ] **Progress bars** — Whether Hytale has built-in progress bar widgets or if they need to be composed
-- [ ] **Keybind registration** — Whether plugins can register custom keybinds
-- [ ] **UI update/refresh** — How to update UI content without closing and reopening (for live XP progress)
-- [ ] **Server-side UI rendering** — Whether UI is defined server-side and sent to client, or requires asset pack
+### Research Still Needed
+
+- [ ] **`.ui` file format** — Exact BSON structure, element types, layout properties, progress bar widgets
+- [ ] **Dynamic lists** — How to render variable-length skill lists in `.ui` templates
+- [ ] **Keybind registration** — Whether plugins can register custom keybinds for opening UI
 
 ---
 

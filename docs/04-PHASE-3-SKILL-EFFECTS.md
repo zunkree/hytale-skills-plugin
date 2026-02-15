@@ -20,214 +20,208 @@ Apply gameplay bonuses based on skill levels. Higher skill levels provide tangib
 
 ## Tasks
 
-### Task 3.1 — Create `SkillEffectConfig.kt`
+### Task 3.1 — Create `SkillEffectCalculator.kt`
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import org.zunkree.hytale.plugins.skillsplugin.HytaleSkillsPlugin
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
+import org.zunkree.hytale.plugins.skillsplugin.config.SkillEffectEntry
 
-data class SkillEffectConfig(
-    val minMultiplier: Float,
-    val maxMultiplier: Float,
-    val minStaminaReduction: Float = 0f,
-    val maxStaminaReduction: Float = 0f,
-    val minSpeedBonus: Float = 0f,
-    val maxSpeedBonus: Float = 0f
+class SkillEffectCalculator(
+    private val skillEffectsConfig: Map<String, SkillEffectEntry>,
+    private val maxLevel: Int
 ) {
-    fun getMultiplierAtLevel(level: Int): Float {
-        val progress = level / 100f
-        return minMultiplier + (maxMultiplier - minMultiplier) * progress
-    }
-
-    fun getStaminaReductionAtLevel(level: Int): Float {
-        val progress = level / 100f
-        return minStaminaReduction + (maxStaminaReduction - minStaminaReduction) * progress
-    }
-
-    fun getSpeedBonusAtLevel(level: Int): Float {
-        val progress = level / 100f
-        return minSpeedBonus + (maxSpeedBonus - minSpeedBonus) * progress
-    }
-}
-
-object SkillEffects {
-
     /**
-     * Build effect configs from plugin config (Phase 1.5).
-     * Falls back to sensible defaults if a skill is missing from config.
+     * Linear interpolation: bonus = min + (max - min) * (level / maxLevel)
      */
-    fun getConfig(skillType: SkillType): SkillEffectConfig {
-        val pluginConfig = HytaleSkillsPlugin.instance.config
-        val entry = pluginConfig.skillEffects[skillType.name]
+    fun getDamageMultiplier(skillType: SkillType, level: Int): Double {
+        val entry = skillEffectsConfig[skillType.name] ?: return 1.0
+        val min = entry.minDamage?.toDouble() ?: 1.0
+        val max = entry.maxDamage?.toDouble() ?: 1.0
+        return lerp(min, max, level)
+    }
 
-        return if (entry != null) {
-            SkillEffectConfig(
-                minMultiplier = entry.minDamage ?: entry.minBlockPower ?: entry.minSpeed ?: entry.minHeight ?: 1.0f,
-                maxMultiplier = entry.maxDamage ?: entry.maxBlockPower ?: entry.maxSpeed ?: entry.maxHeight ?: 1.0f,
-                minSpeedBonus = entry.minSpeedBonus ?: 0f,
-                maxSpeedBonus = entry.maxSpeedBonus ?: 0f,
-                minStaminaReduction = entry.minStaminaReduction ?: 0f,
-                maxStaminaReduction = entry.maxStaminaReduction ?: 0f
-            )
-        } else {
-            SkillEffectConfig(1.0f, 1.0f) // No effect
+    fun getBlockPowerMultiplier(level: Int): Double {
+        val entry = skillEffectsConfig["BLOCKING"] ?: return 1.0
+        val min = entry.minBlockPower?.toDouble() ?: 1.0
+        val max = entry.maxBlockPower?.toDouble() ?: 1.0
+        return lerp(min, max, level)
+    }
+
+    fun getGatheringSpeedMultiplier(skillType: SkillType, level: Int): Double {
+        val entry = skillEffectsConfig[skillType.name] ?: return 1.0
+        val min = entry.minSpeed?.toDouble() ?: 1.0
+        val max = entry.maxSpeed?.toDouble() ?: 1.0
+        return lerp(min, max, level)
+    }
+
+    fun getSpeedBonus(level: Int): Double {
+        val entry = skillEffectsConfig["RUNNING"] ?: return 0.0
+        val min = entry.minSpeedBonus?.toDouble() ?: 0.0
+        val max = entry.maxSpeedBonus?.toDouble() ?: 0.0
+        return lerp(min, max, level)
+    }
+
+    fun getStaminaReduction(skillType: SkillType, level: Int): Double {
+        val entry = skillEffectsConfig[skillType.name] ?: return 0.0
+        val min = entry.minStaminaReduction?.toDouble() ?: 0.0
+        val max = entry.maxStaminaReduction?.toDouble() ?: 0.0
+        return lerp(min, max, level)
+    }
+
+    fun getJumpHeightMultiplier(level: Int): Double {
+        val entry = skillEffectsConfig["JUMPING"] ?: return 1.0
+        val min = entry.minHeight?.toDouble() ?: 1.0
+        val max = entry.maxHeight?.toDouble() ?: 1.0
+        return lerp(min, max, level)
+    }
+
+    private fun lerp(min: Double, max: Double, level: Int): Double {
+        val progress = level.toDouble() / maxLevel
+        return min + (max - min) * progress
+    }
+}
+```
+
+> **Architecture:** `SkillEffectCalculator` is a class (not an object) that takes config via constructor injection. Instantiated once in `SkillsPlugin.setup()`. All values are `Double` for consistency with the rest of the plugin.
+
+### Task 3.2 — Create `SkillEffectApplier.kt`
+
+Unified service that applies skill effects via Hexweave systems:
+
+```kotlin
+package org.zunkree.hytale.plugins.skillsplugin.effect
+
+class SkillEffectApplier(
+    private val skillRepository: SkillRepository,
+    private val effectCalculator: SkillEffectCalculator,
+    private val weaponSkillResolver: WeaponSkillResolver,
+    private val logger: HytaleLogger
+) {
+    // Called from Hexweave damage system (before ApplyDamage)
+    fun modifyOutgoingDamage(ctx: HexweaveDamageContext) {
+        val playerRef = ctx.source?.playerRef ?: return
+        val itemId = ctx.source?.itemInHand?.id ?: ""
+        val skillType = weaponSkillResolver.resolve(itemId) ?: SkillType.UNARMED
+        val level = skillRepository.getSkillLevel(playerRef, skillType)
+        val multiplier = effectCalculator.getDamageMultiplier(skillType, level)
+        ctx.damage *= multiplier
+    }
+
+    // Called from Hexweave damage system (before ApplyDamage, target side)
+    fun modifyBlockPower(ctx: HexweaveDamageContext) {
+        val playerRef = ctx.target?.playerRef ?: return
+        val level = skillRepository.getSkillLevel(playerRef, SkillType.BLOCKING)
+        val multiplier = effectCalculator.getBlockPowerMultiplier(level)
+        ctx.blockPower = (ctx.blockPower ?: 0.0) * multiplier
+    }
+
+    // Called from Hexweave tick system — modifies player attributes each tick
+    fun applyMovementEffects(ctx: HexweaveTickContext) {
+        val playerRef = ctx.playerRef
+
+        // Running speed bonus
+        val runLevel = skillRepository.getSkillLevel(playerRef, SkillType.RUNNING)
+        val speedBonus = effectCalculator.getSpeedBonus(runLevel)
+        ctx.sprintSpeedMultiplier = 1.0 + speedBonus
+
+        // Jump height bonus
+        val jumpLevel = skillRepository.getSkillLevel(playerRef, SkillType.JUMPING)
+        ctx.jumpHeightMultiplier = effectCalculator.getJumpHeightMultiplier(jumpLevel)
+    }
+
+    // Called from Hexweave tick system — modifies stamina drain
+    fun applyStaminaEffects(ctx: HexweaveTickContext) {
+        val playerRef = ctx.playerRef
+
+        if (ctx.isSprinting) {
+            val level = skillRepository.getSkillLevel(playerRef, SkillType.RUNNING)
+            val reduction = effectCalculator.getStaminaReduction(SkillType.RUNNING, level)
+            ctx.staminaDrainMultiplier *= (1.0 - reduction)
+        }
+        if (ctx.isSwimming) {
+            val level = skillRepository.getSkillLevel(playerRef, SkillType.SWIMMING)
+            val reduction = effectCalculator.getStaminaReduction(SkillType.SWIMMING, level)
+            ctx.staminaDrainMultiplier *= (1.0 - reduction)
+        }
+        if (ctx.isSneaking) {
+            val level = skillRepository.getSkillLevel(playerRef, SkillType.SNEAKING)
+            val reduction = effectCalculator.getStaminaReduction(SkillType.SNEAKING, level)
+            ctx.staminaDrainMultiplier *= (1.0 - reduction)
         }
     }
 }
 ```
 
-### Task 3.2 — Create `DamageModifier.kt`
+> **Architecture:** `SkillEffectApplier` is a single class (not multiple `object` singletons) that applies all skill effects. Uses constructor injection for dependencies. Hooks into Hexweave damage and tick systems.
 
-Modify outgoing damage based on weapon skill:
+### Task 3.3 — Create `GatheringEffectApplier.kt`
 
-```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.effect
-
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillManager
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
-
-object DamageModifier {
-
-    fun modifyDamage(
-        playerRef: /* PlayerRef */,
-        baseDamage: Float,
-        weaponSkillType: SkillType
-    ): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, weaponSkillType)
-        val config = SkillEffects.getConfig(weaponSkillType)
-        val multiplier = config.getMultiplierAtLevel(skillLevel)
-        return baseDamage * multiplier
-    }
-
-    fun modifyBlockPower(
-        playerRef: /* PlayerRef */,
-        baseBlockPower: Float
-    ): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, SkillType.BLOCKING)
-        val config = SkillEffects.getConfig(SkillType.BLOCKING)
-        val multiplier = config.getMultiplierAtLevel(skillLevel)
-        return baseBlockPower * multiplier
-    }
-}
-```
-
-### Task 3.3 — Create `StaminaModifier.kt`
-
-Modify stamina consumption based on skills:
+Modifies gathering speed via DamageBlockEvent:
 
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillManager
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
-
-object StaminaModifier {
-
-    fun modifyStaminaCost(
-        playerRef: /* PlayerRef */,
-        baseStaminaCost: Float,
-        action: StaminaAction
-    ): Float {
-        val skillType = action.relatedSkill
-        val skillLevel = SkillManager.getSkillLevel(playerRef, skillType)
-        val config = SkillEffects.getConfig(skillType)
-        val reduction = config.getStaminaReductionAtLevel(skillLevel)
-        return baseStaminaCost * (1f - reduction)
-    }
-}
-
-enum class StaminaAction(val relatedSkill: SkillType) {
-    RUNNING(SkillType.RUNNING),
-    SWIMMING(SkillType.SWIMMING),
-    SNEAKING(SkillType.SNEAKING)
-}
-```
-
-### Task 3.4 — Create `MovementModifier.kt`
-
-Modify movement speed and jump height:
-
-```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.effect
-
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillManager
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
-
-object MovementModifier {
-
-    fun getSprintSpeedMultiplier(playerRef: /* PlayerRef */): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, SkillType.RUNNING)
-        val config = SkillEffects.getConfig(SkillType.RUNNING)
-        return 1f + config.getSpeedBonusAtLevel(skillLevel)
-    }
-
-    fun getJumpHeightMultiplier(playerRef: /* PlayerRef */): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, SkillType.JUMPING)
-        val config = SkillEffects.getConfig(SkillType.JUMPING)
-        return config.getMultiplierAtLevel(skillLevel)
+class GatheringEffectApplier(
+    private val skillRepository: SkillRepository,
+    private val effectCalculator: SkillEffectCalculator,
+    private val blockSkillResolver: BlockSkillResolver,
+    private val logger: HytaleLogger
+) {
+    fun modifyBlockDamage(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
+        val playerRef = ctx.source?.playerRef ?: return
+        val blockId = ctx.event.blockType.id
+        val skillType = blockSkillResolver.resolve(blockId) ?: return
+        val level = skillRepository.getSkillLevel(playerRef, skillType)
+        val multiplier = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
+        ctx.event.damage *= multiplier
     }
 }
 ```
 
-### Task 3.5 — Create `GatheringModifier.kt`
-
-Modify mining/woodcutting speed:
+### Task 3.4 — Register effect systems in plugin setup
 
 ```kotlin
-package org.zunkree.hytale.plugins.skillsplugin.effect
+override fun setup() {
+    super.setup()
+    // ... existing code ...
 
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillManager
-import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
+    val effectCalculator = SkillEffectCalculator(config.skillEffects, config.general.maxSkillLevel)
+    val effectApplier = SkillEffectApplier(skillRepository, effectCalculator, weaponSkillResolver, logger)
+    val gatheringEffectApplier = GatheringEffectApplier(skillRepository, effectCalculator, blockSkillResolver, logger)
 
-object GatheringModifier {
-
-    fun getMiningSpeedMultiplier(playerRef: /* PlayerRef */): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, SkillType.MINING)
-        val config = SkillEffects.getConfig(SkillType.MINING)
-        return config.getMultiplierAtLevel(skillLevel)
-    }
-
-    fun getWoodcuttingSpeedMultiplier(playerRef: /* PlayerRef */): Float {
-        val skillLevel = SkillManager.getSkillLevel(playerRef, SkillType.WOODCUTTING)
-        val config = SkillEffects.getConfig(SkillType.WOODCUTTING)
-        return config.getMultiplierAtLevel(skillLevel)
-    }
-}
-```
-
-### Task 3.6 — Hook modifiers into game events
-
-This is the most Hytale-API-dependent part. You need to find the correct events/hooks to:
-
-1. **Modify outgoing damage** — Hook into damage calculation before it's applied
-2. **Modify block power** — Hook into block/parry calculation
-3. **Modify stamina drain** — Hook into stamina consumption
-4. **Modify movement speed** — Hook into player movement/attributes
-5. **Modify jump height** — Hook into jump calculation
-6. **Modify gathering speed** — Hook into block break time calculation
-
-Example pseudo-code for damage modification:
-
-```kotlin
-// TODO: All event types below are pseudo-code — research actual Hytale event/hook APIs
-events {
-    on<PreDamageCalculationEvent> { event ->
-        if (event.attacker.isPlayer) {
-            val playerRef = event.attacker.asPlayerRef()
-            val weaponSkill = getWeaponSkillType(event.weapon)
-            event.damage = DamageModifier.modifyDamage(
-                playerRef,
-                event.damage,
-                weaponSkill
-            )
+    enableHexweave {
+        damageSystems {
+            // Effects: modify damage BEFORE it's applied
+            before(DamageSystems.ApplyDamage) { ctx ->
+                effectApplier.modifyOutgoingDamage(ctx)
+                effectApplier.modifyBlockPower(ctx)
+            }
+            // XP: grant XP AFTER damage is applied (from Phase 2)
+            after(DamageSystems.ApplyDamage) { ctx ->
+                combatListener.onPlayerDealDamage(ctx)
+                blockingListener.onPlayerBlockDamage(ctx)
+            }
+        }
+        tickSystems {
+            playerTick { ctx ->
+                effectApplier.applyMovementEffects(ctx)
+                effectApplier.applyStaminaEffects(ctx)
+                movementListener.onPlayerTick(ctx)
+            }
         }
     }
+
+    // Gathering effects via ECS event
+    EntityEventSystem<EntityStore, DamageBlockEvent> { ctx ->
+        gatheringEffectApplier.modifyBlockDamage(ctx)
+        harvestListener.onPlayerDamageBlock(ctx)
+    }
 }
 ```
 
-> **Note:** All event types (`PreDamageCalculationEvent`, etc.) and hook patterns in this phase are pseudo-code representing design intent. The actual Hytale APIs for modifying damage calculations, stamina consumption, movement attributes, and gathering speed need to be discovered from SDK documentation.
+> **Note:** Effects use `before(DamageSystems.ApplyDamage)` to modify values before damage is applied, while XP listeners use `after(DamageSystems.ApplyDamage)` to grant XP based on actual damage dealt.
 
 ---
 
@@ -236,31 +230,35 @@ events {
 | Skill | Effect at Level 0 | Effect at Level 100 |
 |-------|-------------------|---------------------|
 | Swords | 1.0x damage | 2.0x damage |
+| Daggers | 1.0x damage | 2.0x damage |
 | Axes | 1.0x damage | 2.0x damage |
 | Bows | 1.0x damage | 2.0x damage |
 | Spears | 1.0x damage | 2.0x damage |
 | Clubs | 1.0x damage | 2.0x damage |
 | Unarmed | 1.0x damage | 2.0x damage |
 | Blocking | 1.0x block power | 1.5x block power |
-| Running | +0% speed, 0% stamina reduction | +25% speed, 33% stamina reduction |
-| Swimming | 0% stamina reduction | 50% stamina reduction |
-| Sneaking | 0% stamina reduction | 75% stamina reduction |
-| Jumping | 1.0x height | 1.5x height |
 | Mining | 1.0x speed | 1.5x speed |
 | Woodcutting | 1.0x speed | 1.5x speed |
+| Running | +0% speed, 0% stamina reduction | +25% speed, 33% stamina reduction |
+| Swimming | 0% stamina reduction | 50% stamina reduction |
+| Diving | TBD (oxygen capacity) | TBD |
+| Sneaking | 0% stamina reduction | 75% stamina reduction |
+| Jumping | 1.0x height | 1.5x height |
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm the following APIs against actual Hytale/Kytale SDK documentation:
+- [x] **Hexweave damage system** — `before(DamageSystems.ApplyDamage)` to modify damage/block power before application
+- [x] **Hexweave tick system** — `playerTick { ctx -> }` to modify movement speed, jump height, stamina drain per tick
+- [x] **DamageBlockEvent** — ECS event to modify gathering speed (block damage multiplier)
+- [x] **CommandBuffer** — Available in all Hexweave and EntityEvent contexts for batched ECS writes
+- [x] **WeaponSkillResolver** — Reused from Phase 2 for weapon skill type detection in damage modifier
 
-- [ ] **Damage modification hooks** — How to intercept and modify outgoing damage before it's applied
-- [ ] **Block power modification** — How to modify blocking/parry effectiveness
-- [ ] **Stamina consumption hooks** — How to modify stamina drain for running/swimming/sneaking
-- [ ] **Movement attribute modification** — How to modify sprint speed and jump height on a per-player basis
-- [ ] **Gathering speed modification** — How to modify block break time/speed
-- [ ] **Player attribute system** — Whether Hytale has an attribute modifier system (like Minecraft's) vs direct value modification
+### Research Still Needed
+
+- [ ] **Stamina system** — Exact API for modifying stamina drain rates (ctx.staminaDrainMultiplier is speculative)
+- [ ] **Diving/oxygen** — How to detect submerged state and modify oxygen capacity
 
 ---
 

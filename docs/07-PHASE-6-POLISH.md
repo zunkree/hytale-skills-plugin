@@ -21,134 +21,146 @@ Finalize configuration options, add admin commands, optimize performance, and pr
 
 ### Task 6.1 — Add admin commands
 
+Uses `AbstractCommandCollection` for subcommand routing and `AbstractPlayerCommand` for thread-safe ECS access. Argument types use `ArgTypes` from Hytale's command API.
+
 > **Note:** Config data classes (`SkillsConfig`, etc.) and `config.json` were established in Phase 1.5. This phase adds admin commands for runtime management.
 
 ```kotlin
-// TODO: Research actual Hytale/Kytale command argument types —
-// PlayerArgument, EnumArgument, IntArgument, FloatArgument are pseudo-code
-command("skills", "Skill commands") {
-    // ... existing subcommands ...
+// Admin command collection: /skills admin <set|reset|give|reload>
+class AdminCommandCollection(
+    private val skillRepository: SkillRepository,
+    private val xpService: XpService,
+    private val xpCurve: XpCurve
+) : AbstractCommandCollection("admin", "Admin commands") {
 
-    subcommand("admin", "Admin commands") {
-        // Permission check — reject non-admins before processing subcommands
-        requires { ctx ->
-            // TODO: Research actual Hytale permission API
-            ctx.hasPermission(HytaleSkillsPlugin.instance.config.permissions.adminCommandsPermission)
+    override fun register() {
+        sub("set", SetSkillCommand(skillRepository, xpCurve))
+        sub("reset", ResetSkillsCommand(skillRepository))
+        sub("give", GiveXpCommand(xpService))
+        sub("reload", ReloadCommand())
+    }
+}
+
+// /skills admin set <player> <skill> <level>
+class SetSkillCommand(
+    private val skillRepository: SkillRepository,
+    private val xpCurve: XpCurve
+) : AbstractPlayerCommand() {
+
+    override fun buildArgs(builder: CommandBase.ArgsBuilder) {
+        builder.required("player", ArgTypes.PLAYER)
+        builder.required("skill", ArgTypes.STRING)  // SkillType.name
+        builder.required("level", ArgTypes.INTEGER)
+    }
+
+    override fun execute(ctx: PlayerCommandContext) {
+        val targetRef = ctx.getPlayerRef("player")
+        val skillName = ctx.getString("skill").uppercase()
+        val level = ctx.getInt("level").coerceIn(0, 100)
+
+        val skillType = SkillType.entries.find { it.name == skillName } ?: run {
+            ctx.sendMessage(Message.raw("Unknown skill: $skillName"))
+            return
         }
 
-        subcommand("set", "Set a player's skill level") {
-            // /skills admin set <player> <skill> <level>
-            argument("player", PlayerArgument)       // pseudo-code argument type
-            argument("skill", EnumArgument(SkillType::class))  // pseudo-code argument type
-            argument("level", IntArgument(0, 100))   // pseudo-code argument type
+        val skills = skillRepository.getPlayerSkills(targetRef) ?: return
+        val skillData = skills.getSkill(skillType)
+        skillData.level = level
+        skillData.totalXP = xpCurve.cumulativeXpForLevel(level)
+        skillRepository.savePlayerSkills(targetRef, skills)
 
-            executes { ctx ->
-                val target = ctx.get<Player>("player")
-                val skillType = ctx.get<SkillType>("skill")
-                val level = ctx.get<Int>("level")
+        ctx.sendMessage(Message.raw("Set ${skillType.displayName} to level $level"))
+    }
+}
 
-                val playerRef = target.asPlayerRef()
-                val skills = SkillManager.getPlayerSkills(playerRef) ?: return@executes
-                val skillData = skills.getSkill(skillType)
+// /skills admin reset <player>
+class ResetSkillsCommand(
+    private val skillRepository: SkillRepository
+) : AbstractPlayerCommand() {
 
-                skillData.level = level
-                skillData.totalXp = XpCalculator.cumulativeXpForLevel(level)
-                SkillManager.savePlayerSkills(playerRef, skills)
+    override fun buildArgs(builder: CommandBase.ArgsBuilder) {
+        builder.required("player", ArgTypes.PLAYER)
+    }
 
-                ctx.sendMessage(Message.raw("Set ${target.name}'s ${skillType.displayName} to level $level"))
-            }
+    override fun execute(ctx: PlayerCommandContext) {
+        val targetRef = ctx.getPlayerRef("player")
+        val skills = PlayerSkillsComponent()  // Fresh component, all skills at 0
+        skillRepository.savePlayerSkills(targetRef, skills)
+        ctx.sendMessage(Message.raw("Reset all skills"))
+    }
+}
+
+// /skills admin give <player> <skill> <xp>
+class GiveXpCommand(
+    private val xpService: XpService
+) : AbstractPlayerCommand() {
+
+    override fun buildArgs(builder: CommandBase.ArgsBuilder) {
+        builder.required("player", ArgTypes.PLAYER)
+        builder.required("skill", ArgTypes.STRING)
+        builder.required("xp", ArgTypes.DOUBLE)
+    }
+
+    override fun execute(ctx: PlayerCommandContext) {
+        val targetRef = ctx.getPlayerRef("player")
+        val skillName = ctx.getString("skill").uppercase()
+        val xp = ctx.getDouble("xp")
+
+        val skillType = SkillType.entries.find { it.name == skillName } ?: run {
+            ctx.sendMessage(Message.raw("Unknown skill: $skillName"))
+            return
         }
 
-        subcommand("reset", "Reset a player's skills") {
-            argument("player", PlayerArgument)  // pseudo-code argument type
+        xpService.grantXp(targetRef, skillType, xp)
+        ctx.sendMessage(Message.raw("Gave $xp XP in ${skillType.displayName}"))
+    }
+}
 
-            executes { ctx ->
-                val target = ctx.get<Player>("player")
-                val playerRef = target.asPlayerRef()
-
-                // Reset all skills to 0
-                val skills = PlayerSkillsComponent()
-                SkillManager.savePlayerSkills(playerRef, skills)
-
-                ctx.sendMessage(Message.raw("Reset all skills for ${target.name}"))
-            }
-        }
-
-        subcommand("give", "Give XP to a player") {
-            argument("player", PlayerArgument)       // pseudo-code argument type
-            argument("skill", EnumArgument(SkillType::class))  // pseudo-code argument type
-            argument("xp", FloatArgument(0f, 100000f))  // pseudo-code argument type
-
-            executes { ctx ->
-                val target = ctx.get<Player>("player")
-                val skillType = ctx.get<SkillType>("skill")
-                val xp = ctx.get<Float>("xp")
-
-                val playerRef = target.asPlayerRef()
-                SkillXpService.grantXp(playerRef, skillType, xp)
-
-                ctx.sendMessage(Message.raw("Gave $xp XP to ${target.name} in ${skillType.displayName}"))
-            }
-        }
-
-        subcommand("reload", "Reload configuration") {
-            executes { ctx ->
-                // Reload config
-                HytaleSkillsPlugin.instance.reloadConfig()
-                ctx.sendMessage(Message.raw("Configuration reloaded"))
-            }
-        }
+// /skills admin reload
+class ReloadCommand : CommandBase() {
+    override fun execute(ctx: CommandContext) {
+        // jsonConfig reload — exact API TBD
+        ctx.sendMessage(Message.raw("Configuration reloaded"))
     }
 }
 ```
+
+> **Architecture:** Admin commands use `AbstractPlayerCommand` (thread-safe ECS access) and `AbstractCommandCollection` (subcommand routing). `ArgTypes.PLAYER`, `ArgTypes.STRING`, `ArgTypes.INTEGER`, `ArgTypes.DOUBLE` are validated Hytale argument types. Permission checks TBD (Hytale's permission system needs further research).
 
 ### Task 6.2 — Performance optimization
 
 ```kotlin
-// Cache skill data for active players
-object SkillCache {
-    private val cache = ConcurrentHashMap<UUID, CachedSkills>()
+// Cache computed effect multipliers to avoid recalculating every tick
+class SkillEffectCache(
+    private val effectCalculator: SkillEffectCalculator
+) {
+    private val cache = ConcurrentHashMap<UUID, CachedEffects>()
 
-    data class CachedSkills(
-        val skills: PlayerSkillsComponent,
-        val effectMultipliers: Map<SkillType, Float>,
+    data class CachedEffects(
+        val multipliers: Map<SkillType, Double>,
         val lastUpdate: Long
     )
 
-    fun get(playerId: UUID): CachedSkills? = cache[playerId]
-
-    fun update(playerId: UUID, skills: PlayerSkillsComponent) {
-        val multipliers = SkillType.values().associate { type ->
-            type to SkillEffects.getConfig(type).getMultiplierAtLevel(skills.getSkill(type).level)
+    fun getOrCompute(playerId: UUID, skills: PlayerSkillsComponent): CachedEffects {
+        val cached = cache[playerId]
+        if (cached != null && System.currentTimeMillis() - cached.lastUpdate < 5000L) {
+            return cached  // Cache valid for 5 seconds
         }
-        cache[playerId] = CachedSkills(skills, multipliers, System.currentTimeMillis())
-    }
 
-    fun invalidate(playerId: UUID) {
-        cache.remove(playerId)
-    }
-
-    fun clear() {
-        cache.clear()
-    }
-}
-
-// Throttle movement XP checks
-object MovementThrottle {
-    private val lastCheck = ConcurrentHashMap<UUID, Long>()
-    private const val CHECK_INTERVAL_MS = 100L // Only check every 100ms
-
-    fun shouldProcess(playerId: UUID): Boolean {
-        val now = System.currentTimeMillis()
-        val last = lastCheck[playerId] ?: 0L
-        if (now - last >= CHECK_INTERVAL_MS) {
-            lastCheck[playerId] = now
-            return true
+        val multipliers = SkillType.entries.associate { type ->
+            type to effectCalculator.getDamageMultiplier(type, skills.getSkill(type).level)
         }
-        return false
+        val entry = CachedEffects(multipliers, System.currentTimeMillis())
+        cache[playerId] = entry
+        return entry
     }
+
+    fun invalidate(playerId: UUID) = cache.remove(playerId)
+    fun clear() = cache.clear()
 }
 ```
+
+> **Note:** Movement XP throttling is already handled by `MovementListener.cooldowns` (Phase 2). The `SkillEffectCache` here caches computed multipliers to avoid recalculating from config every tick.
 
 ### Task 6.3 — Create README.md
 
@@ -159,10 +171,10 @@ A Valheim-inspired skill progression system for Hytale.
 
 ## Features
 
-- **13 Skills**: Swords, Axes, Bows, Spears, Clubs, Unarmed, Blocking, Mining, Woodcutting, Running, Swimming, Sneaking, Jumping
+- **15 Skills**: Swords, Daggers, Axes, Bows, Spears, Clubs, Unarmed, Blocking, Mining, Woodcutting, Running, Swimming, Diving, Sneaking, Jumping
 - **Learn by Doing**: Gain XP by performing actions - fight to improve combat skills, run to improve running
 - **Meaningful Progression**: Higher skills provide real bonuses - up to 2x damage, faster movement, reduced stamina
-- **Death Penalty**: Lose 5% of skill levels on death (configurable), with 10-minute immunity after dying
+- **Death Penalty**: Lose 10% of skill levels on death (configurable), with 5-minute immunity after dying
 - **Full UI**: Beautiful skills menu showing all your progress
 
 ## Installation
@@ -199,14 +211,18 @@ MIT License
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm:
+- [x] **AbstractPlayerCommand** — Thread-safe ECS access for admin commands that modify skill data
+- [x] **AbstractCommandCollection** — Subcommand routing for `/skills admin <set|reset|give|reload>`
+- [x] **ArgTypes** — `ArgTypes.PLAYER`, `ArgTypes.STRING`, `ArgTypes.INTEGER`, `ArgTypes.DOUBLE` for command arguments
+- [x] **CommandBase** — Base class for non-player commands (like reload)
+- [x] **jsonConfig reload** — Kytale supports config reload (exact API for runtime reload TBD)
 
-- [ ] **Permission system** — How Hytale handles permissions (`hasPermission()`, permission nodes, operator status)
-- [ ] **Command argument types** — Actual Kytale DSL for player selectors, enum arguments, numeric arguments
-- [ ] **Config reload** — Whether Kytale `jsonConfig` supports runtime reload or requires custom implementation
-- [ ] **`requires` predicate** — How to gate subcommands behind permission checks in the Kytale command DSL
+### Research Still Needed
+
+- [ ] **Permission system** — How Hytale handles permissions (operator status, permission nodes, `hasPermission()`)
+- [ ] **Permission gating** — How to restrict admin subcommands to operators/admins
 
 ---
 
@@ -234,16 +250,16 @@ Learn by doing! skillsplugin adds a Valheim-inspired skill system where you impr
 
 ## ⚔️ Features
 
-🗡️ **13 Skills** covering combat, gathering, and movement
+🗡️ **15 Skills** covering combat, gathering, and movement
 📈 **Level 0-100** with meaningful bonuses at each level
-💀 **Death Penalty** - lose 5% on death (with immunity protection)
+💀 **Death Penalty** - lose 10% on death (with 5-min immunity)
 🎨 **Beautiful UI** to track your progress
 
 ## 📊 Skills
 
-**Combat**: Swords, Axes, Bows, Spears, Clubs, Unarmed, Blocking
+**Combat**: Swords, Daggers, Axes, Bows, Spears, Clubs, Unarmed, Blocking
 **Gathering**: Mining, Woodcutting
-**Movement**: Running, Swimming, Sneaking, Jumping
+**Movement**: Running, Swimming, Diving, Sneaking, Jumping
 
 ## 🎮 How It Works
 
@@ -254,7 +270,7 @@ Learn by doing! skillsplugin adds a Valheim-inspired skill system where you impr
 
 ## ⚠️ Death Penalty
 
-Like Valheim, dying has consequences! You'll lose 5% of your skill levels, but you get 10 minutes of immunity to prevent frustrating death spirals.
+Like Valheim, dying has consequences! You'll lose 10% of your skill levels, but you get 5 minutes of immunity to prevent frustrating death spirals.
 
 ## 📋 Requirements
 

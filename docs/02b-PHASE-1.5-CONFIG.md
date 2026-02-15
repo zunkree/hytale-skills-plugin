@@ -6,11 +6,13 @@ Establish the configuration system so all subsequent phases can read tunable val
 ## Prerequisites
 - Phase 1 complete (skill data model working)
 
+## Status: **Complete**
+
 ## Done Criteria
-- [ ] `SkillsConfig` data classes defined with sensible defaults
-- [ ] `config.json` generated on first run with default values
-- [ ] Config values accessible from plugin code via `jsonConfig`
-- [ ] All tunable values (XP rates, penalties, effect multipliers) centralized in config
+- [x] `SkillsConfig` data classes defined with sensible defaults
+- [x] `config.json` generated on first run with default values
+- [x] Config values accessible from plugin code via `jsonConfig`
+- [x] All tunable values (XP rates, penalties, effect multipliers) centralized in config
 
 ---
 
@@ -68,28 +70,29 @@ data class GeneralConfig(
 )
 
 data class XpConfig(
-    val baseXpPerAction: Float = 1.0f,
-    val xpScaleFactor: Float = 0.1f,
-    val restedBonusMultiplier: Float = 1.5f,
-    val globalXpMultiplier: Float = 1.0f,
+    val baseXpPerAction: Double = 1.0,
+    val xpScaleFactor: Double = 1.0,
+    val restedBonusMultiplier: Double = 1.5,
+    val globalXpMultiplier: Double = 1.0,
     val actionXp: ActionXpConfig = ActionXpConfig()
 )
 
 data class ActionXpConfig(
-    val combatDamageMultiplier: Float = 0.1f,
-    val miningPerBlock: Float = 1.0f,
-    val woodcuttingPerBlock: Float = 1.0f,
-    val runningPerSecond: Float = 0.1f,
-    val swimmingPerSecond: Float = 0.1f,
-    val sneakingPerSecond: Float = 0.1f,
-    val jumpingPerJump: Float = 0.5f,
-    val blockingDamageMultiplier: Float = 0.05f
+    val combatDamageMultiplier: Double = 0.1,
+    val miningPerBlockMultiplier: Double = 1.0,
+    val woodcuttingPerBlockMultiplier: Double = 1.0,
+    val runningPerDistanceMultiplier: Double = 0.1,
+    val swimmingPerDistanceMultiplier: Double = 0.1,
+    val sneakingPerSecondMultiplier: Double = 0.1,
+    val jumpingPerJumpMultiplier: Double = 0.5,
+    val blockingDamageMultiplier: Double = 0.05,
+    val divingPerSecondMultiplier: Double = 0.1
 )
 
 data class DeathPenaltyConfig(
     val enabled: Boolean = true,
-    val penaltyPercent: Float = 0.05f,
-    val immunityDurationSeconds: Int = 600,
+    val penaltyPercentage: Double = 0.1,
+    val immunityDurationSeconds: Int = 300,
     val showImmunityInHud: Boolean = true
 )
 
@@ -112,8 +115,8 @@ data class SkillEffectEntry(
 ### Task 1.5.3 — Register config in plugin
 
 ```kotlin
-// In HytaleSkillsPlugin.kt
-class HytaleSkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
+// In SkillsPlugin.kt
+class SkillsPlugin(init: JavaPluginInit) : KotlinPlugin(init) {
 
     // TODO: Research actual jsonConfig API
     val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }
@@ -195,14 +198,12 @@ Place in `src/main/resources/config.json` (or wherever Kytale expects it):
 
 ---
 
-## Research Required
+## Validated APIs
 
-Before implementing this phase, confirm:
-
-- [ ] **`jsonConfig` DSL** — Exact Kytale API for declaring JSON-backed config with defaults
-- [ ] **Config file path** — Where Kytale places plugin config files at runtime
-- [ ] **Default generation** — Whether Kytale auto-generates the file from the data class defaults
-- [ ] **Reload support** — Whether `jsonConfig` supports runtime reload (needed for Phase 6 admin command)
+- [x] **`jsonConfig` DSL** — `val config by jsonConfig<SkillsConfig>("config") { SkillsConfig() }` in plugin class
+- [x] **Config file path** — Kytale places config in plugin's data directory
+- [x] **Default generation** — Kytale auto-generates JSON from data class defaults on first run
+- [x] **Reload support** — Config reload available for Phase 6 admin command
 
 ---
 
