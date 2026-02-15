@@ -21,12 +21,19 @@ class PlayerLifecycleListener(
         val playerRef = event.playerRef
 
         logger.debug { "Fetching skills for ${event.player.displayName}:${event.player.uuid}" }
-        if (skillRepository.getPlayerSkills(playerRef) == null) {
+        val existingSkills = skillRepository.getPlayerSkills(playerRef)
+        if (existingSkills == null) {
             logger.info {
                 "No skills found for ${event.player.displayName}:${event.player.uuid}, initializing."
             }
             skillRepository.savePlayerSkills(playerRef, PlayerSkillsComponent())
             logger.debug { "Initialized skills for ${event.player.displayName}:${event.player.uuid}" }
+        } else {
+            logger.info {
+                "Player ${event.player.displayName} connected with existing skills: " +
+                    "totalLevels=${existingSkills.totalLevels}, " +
+                    "nonZero=${existingSkills.skills.count { it.value.level > 0 }}"
+            }
         }
 
         val uuid = event.player.uuid ?: return
@@ -38,6 +45,14 @@ class PlayerLifecycleListener(
 
         val entityRef = activePlayers.remove(event.playerRef.uuid) ?: return
         val skills = skillRepository.getPlayerSkills(entityRef) ?: return
+        logger.debug {
+            "Disconnect skill snapshot for ${event.playerRef.username}: " +
+                skills.skills
+                    .filter { it.value.level > 0 }
+                    .map { "${it.key}=${it.value.level}" }
+                    .joinToString(", ")
+                    .ifEmpty { "(all at 0)" }
+        }
         skillRepository.savePlayerSkills(entityRef, skills)
         logger.info { "Saved skills for player ${event.playerRef.username} (${event.playerRef.uuid}) on disconnect." }
     }

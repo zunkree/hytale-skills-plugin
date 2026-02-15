@@ -45,6 +45,7 @@ class StatEffectApplier(
             }
         }
 
+        logger.debug { "Stamina modifier removed (not sprinting or level 0)" }
         statMap.removeModifier(staminaIndex, STAMINA_MODIFIER_KEY)
     }
 
@@ -76,6 +77,7 @@ class StatEffectApplier(
             }
         }
 
+        logger.debug { "Oxygen modifier removed (not in fluid or level 0)" }
         statMap.removeModifier(oxygenIndex, OXYGEN_MODIFIER_KEY)
     }
 

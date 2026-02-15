@@ -25,22 +25,39 @@ class CombatListener(
                 return
             }
 
-        if (cause.id != "PHYSICAL" && cause.id != "PROJECTILE") {
+        logger.debug { "Processing combat XP for damage cause: $cause, with id: ${cause.id}" }
+        if (cause.id != "Physical" && cause.id != "Projectile") {
             logger.debug { "Damage cause $cause is not physical or projectile, skipping combat XP processing" }
             return
         }
 
-        val source = ctx.damage.source as? Damage.EntitySource ?: return
+        val source =
+            ctx.damage.source as? Damage.EntitySource ?: run {
+                logger.debug { "Combat: damage source is not an entity, skipping" }
+                return
+            }
         val ref = source.ref
-        val player = ref.store.getComponent(ref, componentType<Player>()) ?: return
+        val player =
+            ref.store.getComponent(ref, componentType<Player>()) ?: run {
+                logger.debug { "Combat: attacker is not a player, skipping" }
+                return
+            }
 
         val skillType =
             player.inventory.itemInHand
-                ?.let { weaponSkillResolver.resolve(it.item.id) ?: return }
+                ?.let { item ->
+                    weaponSkillResolver.resolve(item.item.id) ?: run {
+                        logger.debug { "Combat: item ${item.item.id} not a recognized weapon, skipping" }
+                        return
+                    }
+                }
                 ?: SkillType.UNARMED
 
         val baseXp = ctx.damage.initialAmount * actionXpConfig.combatDamageMultiplier
-        logger.debug { "Granting $skillType XP: $baseXp for ${player.displayName}" }
+        logger.debug {
+            "Combat XP: player=${player.displayName}, skill=$skillType, " +
+                "damage=${ctx.damage.initialAmount}, baseXp=$baseXp"
+        }
 
         xpService.grantXpAndSave(ref, skillType, baseXp, ctx.commandBuffer)
     }

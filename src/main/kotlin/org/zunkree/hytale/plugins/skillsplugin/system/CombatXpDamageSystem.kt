@@ -1,6 +1,7 @@
 package org.zunkree.hytale.plugins.skillsplugin.system
 
 import aster.amo.kytale.extension.componentType
+import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Store
@@ -37,7 +38,10 @@ class CombatXpDamageSystem(
         commandBuffer: CommandBuffer<EntityStore>,
         damage: Damage,
     ) {
-        if (damage.isCancelled) return
+        if (damage.isCancelled) {
+            logger.debug { "CombatXpDamageSystem: damage cancelled, skipping" }
+            return
+        }
         val ref = chunk.getReferenceTo(index)
         val playerRef = store.getComponent(ref, componentType<PlayerRef>())
         val ctx = DamageContext(damage, commandBuffer, playerRef, logger)
