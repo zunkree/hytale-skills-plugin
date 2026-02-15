@@ -24,10 +24,10 @@
 - [x] Test persistence across restarts
 
 ### Phase 1.5 Tasks (Config) — Complete
-- [x] Research Kytale jsonConfig API
+- [x] Research native BuilderCodec + Config<T> API
 - [x] Create SkillsConfig data classes (GeneralConfig, XpConfig, ActionXpConfig, DeathPenaltyConfig, SkillEffectEntry)
-- [x] Create default config.json
-- [x] Register config in plugin setup via `jsonConfig<SkillsConfig>("config")`
+- [x] Create SkillsConfigCodec with BuilderCodec definitions
+- [x] Register config in plugin setup via `loadConfig("skills", SkillsConfigCodec.CODEC)`
 - [x] Verify config loading and defaults
 
 ### Phase 2 Tasks (XP Progression) — Complete
@@ -38,7 +38,7 @@
 - [x] Create HarvestListener (DamageBlockEvent + BlockSkillResolver)
 - [x] Create MovementListener (tick system with cooldowns)
 - [x] Create BlockingListener (DamageEventSystem, target side)
-- [x] Register listeners in plugin setup (4 patterns: DamageEventSystem, Hexweave, EntityEventSystem, EventRegistry)
+- [x] Register listeners in plugin setup (3 patterns: DamageEventSystem, EntityEventSystem/EntityTickingSystem, EventRegistry)
 - [x] Level-up notifications via player.sendMessage()
 - [x] Rested bonus implementation via XpCurve.calculateXpGain()
 
@@ -85,9 +85,10 @@
 | `BuilderCodec<T>` | BSON serialization | 1 |
 | `Ref<EntityStore>` | Player entity reference | 1 |
 | `CommandBuffer<EntityStore>` | Batched ECS writes in event handlers | 1, 2 |
-| `jsonConfig<T>()` | Plugin configuration | 1.5 |
+| `BuilderCodec<T>` + `Config<T>` | Plugin configuration via `loadConfig()` | 1.5 |
 | `DamageEventSystem` subclasses | Combat damage systems (before/after ApplyDamage) | 2, 3 |
-| `enableHexweave {}` | Entity event and tick systems | 2, 3 |
+| `EntityEventSystem<S,E>` | ECS event systems (e.g., DamageBlockEvent) | 2, 3 |
+| `EntityTickingSystem<S>` | ECS tick systems (e.g., movement) | 2, 3 |
 | `Damage.BLOCKED` / `STAMINA_DRAIN_MULTIPLIER` | Blocking detection + stamina MetaKeys | 3 |
 | `Damage.getAmount()` / `setAmount()` | Read/modify damage amount | 3 |
 | `DamageBlockEvent` / `EntityEventSystem` | Gathering events | 2, 3 |
@@ -106,7 +107,7 @@
 - All numeric values are `Double` (not Float)
 - SkillType has 15 entries with `categories: Set<SkillCategory>`
 - Death penalty: 10% default, 300s immunity, persistent via ECS
-- Four event registration patterns: custom DamageEventSystem subclasses, Hexweave (entity events + ticks), EntityEventSystem, EventRegistry
+- Three event registration patterns: custom DamageEventSystem subclasses, EntityEventSystem/EntityTickingSystem (native ECS), EventRegistry
 - CI runs quality checks only (ktlint + detekt) — no compilation (HytaleServer.jar unavailable in CI)
 - Damage pipeline order: gatherDamageGroup → filterDamageGroup (blocking/armor) → inspectDamageGroup → ApplyDamage
 - Blocking is all-or-nothing (DamageModifiers = 0); stamina is the real cost (`damage / StaminaCost.Value`); plugin reduces blocking stamina via `Damage.STAMINA_DRAIN_MULTIPLIER` MetaKey

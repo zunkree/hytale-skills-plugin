@@ -5,8 +5,8 @@ import org.jetbrains.gradle.ext.settings
 
 plugins {
     kotlin("jvm") version "2.3.10"
-    kotlin("plugin.serialization") version "2.3.10"
 
+    id("com.gradleup.shadow") version "9.0.0-beta12"
     id("org.jetbrains.gradle.plugin.idea-ext") version "1.3"
     id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
     id("dev.detekt") version "2.0.0-alpha.2"
@@ -38,8 +38,6 @@ version = property("pluginVersion") as String
 
 repositories {
     mavenCentral()
-    maven("https://maven.pokeskies.com/releases")
-    maven("https://maven.hytale-modding.info/releases")
 }
 
 // Configuration for runtime mod dependencies (copied to build/libs for dev server)
@@ -50,15 +48,6 @@ dependencies {
     if (hytaleHome != null) {
         compileOnly(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
     }
-
-    // Kytale framework
-    compileOnly("aster.amo:kytale:1.+")
-    runtimeMods("aster.amo:kytale:1.+")
-
-    // Serialization runtime — must match the version bundled in Kytale's fat JAR
-    // to avoid AbstractMethodError on GeneratedSerializer.typeParametersSerializers()
-    compileOnly("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // Testing
     testImplementation(kotlin("test"))
@@ -83,7 +72,8 @@ kover {
                 // cannot be unit tested without a running server
                 classes(
                     "org.zunkree.hytale.plugins.skillsplugin.SkillsPlugin",
-                    "org.zunkree.hytale.plugins.skillsplugin.HexweaveRegistrationKt",
+                    "org.zunkree.hytale.plugins.skillsplugin.bootstrap.*",
+                    "org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfigCodec",
                     "org.zunkree.hytale.plugins.skillsplugin.system.*",
                     "org.zunkree.hytale.plugins.skillsplugin.persistence.*",
                     "org.zunkree.hytale.plugins.skillsplugin.listener.*",
@@ -109,6 +99,14 @@ kover {
 tasks.register<Copy>("copyRuntimeMods") {
     from(runtimeMods)
     into(layout.buildDirectory.dir("libs"))
+}
+
+tasks.shadowJar {
+    archiveClassifier.set("")
+}
+
+tasks.jar {
+    enabled = false
 }
 
 kotlin {
@@ -156,7 +154,7 @@ if (hytaleHome != null) {
 
     // Run task that executes HytaleServer.jar
     tasks.register<JavaExec>("run") {
-        dependsOn(tasks.jar, "copyRuntimeMods")
+        dependsOn(tasks.shadowJar, "copyRuntimeMods")
         group = "application"
         description = "Runs the Hytale server with this plugin"
 

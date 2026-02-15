@@ -1,10 +1,9 @@
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.entity.entities.Player
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.resolver.WeaponSkillResolver
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
@@ -24,7 +23,7 @@ class CombatEffectApplier(
             }
         val ref = source.ref
         val player =
-            ref.store.getComponent(ref, componentType<Player>()) ?: run {
+            ref.store.getComponent(ref, Player.getComponentType()) ?: run {
                 logger.debug { "CombatEffect: attacker is not a player, skipping" }
                 return
             }

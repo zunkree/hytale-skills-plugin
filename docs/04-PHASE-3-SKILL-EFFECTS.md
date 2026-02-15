@@ -75,7 +75,7 @@ class SkillEffectCalculator(
 }
 ```
 
-> **Architecture:** `SkillEffectCalculator` is a class (not an object) that takes config via constructor injection. Instantiated once in `SkillsPlugin.setup()`. All values are `Double` for consistency with the rest of the plugin.
+> **Architecture:** `SkillEffectCalculator` is a class (not an object) that takes config via constructor injection. Instantiated once in `PluginApplication.setup()`. All values are `Double` for consistency with the rest of the plugin.
 
 ### Task 3.2 — Create `SkillEffectApplier.kt`
 
@@ -84,12 +84,11 @@ Unified service that applies skill effects via damage and tick systems:
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.kytale.extension.componentType
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.entity.entities.Player
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage
 
-class SkillEffectApplier(
+class CombatEffectApplier(
     private val skillRepository: SkillRepository,
     private val effectCalculator: SkillEffectCalculator,
     private val weaponSkillResolver: WeaponSkillResolver,
@@ -99,7 +98,7 @@ class SkillEffectApplier(
     fun modifyOutgoingDamage(ctx: DamageContext) {
         val source = ctx.damage.source as? Damage.EntitySource ?: return
         val ref = source.ref
-        val player = ref.store.getComponent(ref, componentType<Player>()) ?: return
+        val player = ref.store.getComponent(ref, Player.getComponentType()) ?: return
         val skillType = player.inventory.itemInHand
             ?.let { weaponSkillResolver.resolve(it.item.id) }
             ?: SkillType.UNARMED
@@ -110,49 +109,35 @@ class SkillEffectApplier(
     }
 
     // Called from SkillEffectDamageSystem (before ApplyDamage, target side)
-    // Blocking in Hytale is all-or-nothing: DamageModifiers are all 0, so
-    // 100% of damage is blocked. The real cost is stamina — each block costs
-    // damage / StaminaCost.Value stamina. Guard break occurs when stamina
-    // runs out. This skill reduces the stamina cost of blocking.
     fun modifyBlockingStamina(ctx: DamageContext) {
-        val ref = ctx.playerRef?.reference ?: return
-
-        if (ctx.damage.getIfPresentMetaObject(Damage.BLOCKED) != true) return
-
-        val level = skillRepository.getSkillLevel(ref, SkillType.BLOCKING)
-        if (level <= 0) return
-
-        // Reduce stamina drain during blocking via STAMINA_DRAIN_MULTIPLIER MetaKey
-        // At level 100: 50% reduction — player can sustain blocking longer
-        val staminaReduction = effectCalculator.getStaminaReduction(SkillType.BLOCKING, level)
-        if (staminaReduction > 0.0) {
-            val currentStaminaMult = ctx.damage.getIfPresentMetaObject(
-                Damage.STAMINA_DRAIN_MULTIPLIER
-            ) ?: 1.0f
-            ctx.damage.putMetaObject(
-                Damage.STAMINA_DRAIN_MULTIPLIER,
-                currentStaminaMult * (1.0f - staminaReduction.toFloat()),
-            )
-        }
+        // ... blocking stamina reduction via Damage.STAMINA_DRAIN_MULTIPLIER MetaKey
     }
+}
 
-    // Called from tick system — modifies player attributes each tick
-    // TODO: Research exact TickContext API for speed/jump/stamina modification
-    fun applyMovementEffects(ctx: TickContext) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
-        // TODO: Exact API for modifying sprint speed and jump height per tick is speculative
+class MovementEffectApplier(
+    private val skillRepository: SkillRepository,
+    private val effectCalculator: SkillEffectCalculator,
+    private val logger: HytaleLogger,
+) {
+    // Called from MovementTickSystem — modifies player speed/jump each tick
+    fun applyMovementEffects(index: Int, chunk: ArchetypeChunk<EntityStore>, store: Store<EntityStore>) {
+        val ref = chunk.getReferenceTo(index)
+        // Modify sprint speed and jump height via MovementManager
     }
+}
 
-    // Called from tick system — modifies stamina drain
-    // TODO: Research exact TickContext API for stamina drain modification
-    fun applyStaminaEffects(ctx: TickContext) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
-        // TODO: Exact API for modifying per-tick stamina drain is speculative
-    }
+class StatEffectApplier(
+    private val skillRepository: SkillRepository,
+    private val effectCalculator: SkillEffectCalculator,
+    private val logger: HytaleLogger,
+) {
+    // Called from MovementTickSystem — modifies stamina/oxygen via EntityStatMap
+    fun applyStaminaEffects(index: Int, chunk: ArchetypeChunk<EntityStore>, store: Store<EntityStore>) { ... }
+    fun applyOxygenEffects(index: Int, chunk: ArchetypeChunk<EntityStore>, store: Store<EntityStore>) { ... }
 }
 ```
 
-> **Architecture:** `SkillEffectApplier` is a single class (not multiple `object` singletons) that applies all skill effects. Uses constructor injection for dependencies. Combat effects hook into custom `DamageEventSystem` subclasses (registered directly via Hytale API); movement/stamina effects hook into Hexweave tick systems.
+> **Architecture:** Effect appliers are split into focused classes (`CombatEffectApplier`, `MovementEffectApplier`, `StatEffectApplier`, `GatheringEffectApplier`) using constructor injection. Combat effects hook into custom `DamageEventSystem` subclasses; movement/stamina/oxygen effects hook into `MovementTickSystem` (native `EntityTickingSystem<EntityStore>`).
 >
 > **Blocking implementation note:** Blocking in Hytale is **all-or-nothing** — `WieldingInteraction.DamageModifiers` are all 0 (Physical: 0, Projectile: 0, Poison: 0), meaning 100% of damage is blocked. The real cost is stamina: `StaminaCost { Value: 7, CostType: "Damage" }` → each block costs `damage / 7` stamina. Guard break occurs when stamina runs out. The Blocking skill only reduces stamina cost via `Damage.STAMINA_DRAIN_MULTIPLIER` MetaKey — there is no "block power" to enhance.
 >
@@ -165,7 +150,7 @@ Modifies gathering speed via DamageBlockEvent:
 ```kotlin
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.hexweave.dsl.systems.context.EntityEventContext
+import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.event.events.ecs.DamageBlockEvent
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
@@ -175,50 +160,35 @@ class GatheringEffectApplier(
     private val effectCalculator: SkillEffectCalculator,
     private val blockSkillResolver: BlockSkillResolver,
     private val logger: HytaleLogger,
-    private val skillRepository: SkillRepository,
-    private val effectCalculator: SkillEffectCalculator,
-    private val blockSkillResolver: BlockSkillResolver,
-    private val logger: HytaleLogger,
 ) {
-    fun modifyBlockDamage(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
-        val blockId = ctx.event.blockType.id
+    fun modifyBlockDamage(index: Int, chunk: ArchetypeChunk<EntityStore>, event: DamageBlockEvent) {
+        val ref = chunk.getReferenceTo(index)
+        val blockId = event.blockType.id
         val skillType = blockSkillResolver.resolve(blockId) ?: return
         val level = skillRepository.getSkillLevel(ref, skillType)
         val multiplier = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
-        ctx.event.damage *= multiplier
+        event.damage *= multiplier
     }
 }
 ```
 
 ### Task 3.4 — Register effect systems in plugin setup
 
+All systems are registered via `entityStoreRegistry.registerSystem()` in `PluginApplication.registerAll()`:
+
 ```kotlin
-override fun setup() {
-    super.setup()
-    // ... existing code (config, repositories, XP services, resolvers, listeners) ...
+// Damage systems: custom DamageEventSystem subclasses
+plugin.entityStoreRegistry.registerSystem(SkillEffectDamageSystem(combatEffectApplier, log))
+plugin.entityStoreRegistry.registerSystem(CombatXpDamageSystem(combatListener, blockingListener, log))
 
-    val effectCalculator = SkillEffectCalculator(config.skillEffects, config.general.maxLevel)
-    val effectApplier = SkillEffectApplier(skillRepository, effectCalculator, weaponSkillResolver, logger)
-    val gatheringEffectApplier = GatheringEffectApplier(skillRepository, effectCalculator, blockSkillResolver, logger)
+// ECS event system: gathering (EntityEventSystem<EntityStore, DamageBlockEvent>)
+plugin.entityStoreRegistry.registerSystem(BlockDamageXpSystem(harvestListener, gatheringEffectApplier, log))
 
-    // Damage systems: registered directly via Hytale API (not Hexweave)
-    // Each is a distinct DamageEventSystem subclass, avoiding DynamicDamageSystem duplicate registration
-    entityStoreRegistry.registerSystem(SkillEffectDamageSystem(combatEffectApplier, logger))
-    entityStoreRegistry.registerSystem(CombatXpDamageSystem(combatListener, blockingListener, logger))
-
-    // Hexweave: entity event + tick systems (gathering, movement)
-    registerHexweaveSystems(
-        gatheringEffectApplier,
-        movementEffectApplier,
-        statEffectApplier,
-        harvestListener,
-        movementListener,
-    )
-}
+// ECS tick system: movement (EntityTickingSystem<EntityStore>)
+plugin.entityStoreRegistry.registerSystem(MovementTickSystem(movementListener, statEffectApplier, movementEffectApplier, log))
 ```
 
-> **Note:** Damage systems use custom `DamageEventSystem` subclasses registered directly via `entityStoreRegistry.registerSystem()`. This avoids the Hexweave `DynamicDamageSystem` duplicate class limitation (Hytale's `ComponentRegistry.registerSystem()` rejects duplicate class types). `SkillEffectDamageSystem` runs `before<ApplyDamage>()` to modify values; `CombatXpDamageSystem` runs `after<ApplyDamage>()` to grant XP. By the time `before(ApplyDamage)` runs, the `filterDamageGroup` has already executed — `WieldingDamageReduction` has already set `Damage.BLOCKED = true` and zeroed damage.
+> **Note:** All ECS systems (damage, entity event, tick) are registered via `entityStoreRegistry.registerSystem()`. Each is a distinct class to avoid duplicate class rejection by `ComponentRegistry.registerSystem()`. `SkillEffectDamageSystem` runs `before<ApplyDamage>()` to modify values; `CombatXpDamageSystem` runs `after<ApplyDamage>()` to grant XP. By the time `before(ApplyDamage)` runs, the `filterDamageGroup` has already executed — `WieldingDamageReduction` has already set `Damage.BLOCKED = true` and zeroed damage.
 
 ---
 
@@ -247,9 +217,9 @@ override fun setup() {
 ## Validated APIs
 
 - [x] **DamageEventSystem** — Custom subclasses registered via `entityStoreRegistry.registerSystem()` with `SystemDependency(Order.BEFORE/AFTER, DamageSystems.ApplyDamage::class.java)` for damage modification and XP grants
-- [x] **Hexweave tick system** — `tickSystem("id") { query { componentType<PlayerRef>() }; onTick { this } }` for per-tick effects
-- [x] **DamageBlockEvent** — `entityEventSystem<EntityStore, DamageBlockEvent>("id") { onEvent { this } }` to modify gathering speed
-- [x] **CommandBuffer** — Available in damage systems, Hexweave, and EntityEvent contexts for batched ECS writes
+- [x] **EntityTickingSystem<EntityStore>** — Native ECS tick system for per-tick movement/stat effects, registered via `entityStoreRegistry.registerSystem()`
+- [x] **EntityEventSystem<EntityStore, DamageBlockEvent>** — Native ECS event system for gathering speed modification, registered via `entityStoreRegistry.registerSystem()`
+- [x] **CommandBuffer** — Available in damage systems, EntityEventSystem, and EntityTickingSystem for batched ECS writes
 - [x] **WeaponSkillResolver** — Reused from Phase 2 for weapon skill type detection in damage modifier
 - [x] **`Damage.BLOCKED`** — `MetaKey<Boolean>` set to `true` when damage was blocked by `WieldingDamageReduction`
 - [x] **`Damage.STAMINA_DRAIN_MULTIPLIER`** — `MetaKey<Float>` controls stamina drain for the damage event; set by `DamageEffects.addToDamage()` during blocking
@@ -268,7 +238,7 @@ The `DamageModule` processes damage in this order:
    - `SkillEffectDamageSystem` (`before<ApplyDamage>()`) — modifies damage/blocking stamina
    - `CombatXpDamageSystem` (`after<ApplyDamage>()`) — grants combat/blocking XP
 
-Both are custom `DamageEventSystem` subclasses registered directly, avoiding Hexweave's `DynamicDamageSystem` duplicate class limitation. Blocking has already occurred when these handlers run.
+Both are custom `DamageEventSystem` subclasses, each a distinct class to avoid Hytale's `ComponentRegistry.registerSystem()` duplicate class rejection. Blocking has already occurred when these handlers run.
 
 ### Blocking Internals (from HytaleServer.jar decompilation)
 

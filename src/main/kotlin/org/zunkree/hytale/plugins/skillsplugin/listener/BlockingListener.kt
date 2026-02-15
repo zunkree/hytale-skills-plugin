@@ -1,9 +1,9 @@
 package org.zunkree.hytale.plugins.skillsplugin.listener
 
-import aster.amo.kytale.extension.debug
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.modules.entity.damage.Damage
 import org.zunkree.hytale.plugins.skillsplugin.config.ActionXpConfig
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 import org.zunkree.hytale.plugins.skillsplugin.system.DamageContext
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService

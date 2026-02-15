@@ -1,10 +1,10 @@
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.hexweave.dsl.systems.context.EntityEventContext
-import aster.amo.kytale.extension.debug
+import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.event.events.ecs.DamageBlockEvent
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.resolver.BlockSkillResolver
 
@@ -14,9 +14,13 @@ class GatheringEffectApplier(
     private val blockSkillResolver: BlockSkillResolver,
     private val logger: HytaleLogger,
 ) {
-    fun modifyBlockDamage(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
-        val blockType = ctx.event.blockType.id
+    fun modifyBlockDamage(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        event: DamageBlockEvent,
+    ) {
+        val ref = chunk.getReferenceTo(index)
+        val blockType = event.blockType.id
         val skillType =
             blockSkillResolver.resolve(blockType) ?: run {
                 logger.debug { "GatheringEffect: block $blockType not recognized, no speed bonus" }
@@ -29,6 +33,6 @@ class GatheringEffectApplier(
             }
         val multiplier = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
         logger.debug { "Gathering damage modified: $skillType lv$level, multiplier=$multiplier" }
-        ctx.event.damage *= multiplier.toFloat()
+        event.damage *= multiplier.toFloat()
     }
 }

@@ -1,15 +1,15 @@
 package org.zunkree.hytale.plugins.skillsplugin.effect
 
-import aster.amo.hexweave.internal.system.TickContext
-import aster.amo.kytale.extension.componentType
-import aster.amo.kytale.extension.debug
+import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.Ref
+import com.hypixel.hytale.component.Store
 import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.protocol.MovementStates
 import com.hypixel.hytale.server.core.entity.entities.player.movement.MovementManager
 import com.hypixel.hytale.server.core.entity.movement.MovementStatesComponent
 import com.hypixel.hytale.server.core.universe.PlayerRef
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
+import org.zunkree.hytale.plugins.skillsplugin.extension.debug
 import org.zunkree.hytale.plugins.skillsplugin.persistence.SkillRepository
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 import java.util.UUID
@@ -23,13 +23,17 @@ class MovementEffectApplier(
     private val lastSpeedMultiplier = ConcurrentHashMap<UUID, Float>()
     private val lastJumpMultiplier = ConcurrentHashMap<UUID, Float>()
 
-    fun applyMovementEffects(ctx: TickContext) {
-        val ref = ctx.chunk.getReferenceTo(ctx.index)
+    fun applyMovementEffects(
+        index: Int,
+        chunk: ArchetypeChunk<EntityStore>,
+        store: Store<EntityStore>,
+    ) {
+        val ref = chunk.getReferenceTo(index)
         val playerUuid =
-            ctx.store.getComponent(ref, componentType<PlayerRef>())?.uuid ?: return
-        val movementManager = ctx.store.getComponent(ref, componentType<MovementManager>()) ?: return
+            store.getComponent(ref, PlayerRef.getComponentType())?.uuid ?: return
+        val movementManager = store.getComponent(ref, MovementManager.getComponentType()) ?: return
         val movementStates =
-            ctx.store.getComponent(ref, componentType<MovementStatesComponent>())?.movementStates ?: return
+            store.getComponent(ref, MovementStatesComponent.getComponentType())?.movementStates ?: return
 
         applySpeedEffect(ref, movementManager, movementStates, playerUuid)
         applyJumpEffect(ref, movementManager, playerUuid)

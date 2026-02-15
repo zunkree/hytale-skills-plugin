@@ -1,14 +1,12 @@
 package org.zunkree.hytale.plugins.skillsplugin.config
 
-import kotlinx.serialization.Serializable
 import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 
-@Serializable
 data class SkillsConfig(
-    val general: GeneralConfig = GeneralConfig(),
-    val xp: XpConfig = XpConfig(),
-    val deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
-    val skillEffects: Map<SkillType, SkillEffectEntry> = defaultSkillEffects(),
+    var general: GeneralConfig = GeneralConfig(),
+    var xp: XpConfig = XpConfig(),
+    var deathPenalty: DeathPenaltyConfig = DeathPenaltyConfig(),
+    var skillEffects: Map<SkillType, SkillEffectEntry> = defaultSkillEffects(),
 ) {
     companion object {
         fun defaultSkillEffects(): Map<SkillType, SkillEffectEntry> =
@@ -38,55 +36,50 @@ data class SkillsConfig(
     }
 }
 
-@Serializable
 data class GeneralConfig(
-    val maxLevel: Int = 100,
-    val showLevelUpNotifications: Boolean = true,
-    val showXpGainNotifications: Boolean = false,
+    var maxLevel: Int = 100,
+    var showLevelUpNotifications: Boolean = true,
+    var showXpGainNotifications: Boolean = false,
 )
 
-@Serializable
 data class XpConfig(
-    val baseXpPerAction: Double = 1.0,
-    val xpScaleFactor: Double = 1.0,
-    val restedBonusMultiplier: Double = 1.5,
-    val globalXpMultiplier: Double = 1.0,
-    val actionXp: ActionXpConfig = ActionXpConfig(),
+    var baseXpPerAction: Double = 1.0,
+    var xpScaleFactor: Double = 1.0,
+    var restedBonusMultiplier: Double = 1.5,
+    var globalXpMultiplier: Double = 1.0,
+    var actionXp: ActionXpConfig = ActionXpConfig(),
 )
 
-@Serializable
 data class ActionXpConfig(
-    val combatDamageMultiplier: Double = 0.1,
-    val miningPerBlockMultiplier: Double = 1.0,
-    val woodcuttingPerBlockMultiplier: Double = 1.0,
-    val runningPerDistanceMultiplier: Double = 0.1,
-    val swimmingPerDistanceMultiplier: Double = 0.1,
-    val sneakingPerSecondMultiplier: Double = 0.1,
-    val jumpingPerJumpMultiplier: Double = 0.5,
-    val blockingDamageMultiplier: Double = 0.05,
-    val divingPerSecondMultiplier: Double = 0.1,
+    var combatDamageMultiplier: Double = 0.1,
+    var miningPerBlockMultiplier: Double = 1.0,
+    var woodcuttingPerBlockMultiplier: Double = 1.0,
+    var runningPerDistanceMultiplier: Double = 0.1,
+    var swimmingPerDistanceMultiplier: Double = 0.1,
+    var sneakingPerSecondMultiplier: Double = 0.1,
+    var jumpingPerJumpMultiplier: Double = 0.5,
+    var blockingDamageMultiplier: Double = 0.05,
+    var divingPerSecondMultiplier: Double = 0.1,
 )
 
-@Serializable
 data class DeathPenaltyConfig(
-    val enabled: Boolean = true,
-    val penaltyPercentage: Double = 0.1,
-    val immunityDurationSeconds: Int = 300,
-    val showImmunityInHud: Boolean = true,
+    var enabled: Boolean = true,
+    var penaltyPercentage: Double = 0.1,
+    var immunityDurationSeconds: Int = 300,
+    var showImmunityInHud: Boolean = true,
 )
 
-@Serializable
 data class SkillEffectEntry(
-    val minDamage: Float? = null,
-    val maxDamage: Float? = null,
-    val minSpeed: Float? = null,
-    val maxSpeed: Float? = null,
-    val minSpeedBonus: Float? = null,
-    val maxSpeedBonus: Float? = null,
-    val minStaminaReduction: Float? = null,
-    val maxStaminaReduction: Float? = null,
-    val minHeight: Float? = null,
-    val maxHeight: Float? = null,
-    val minOxygenBonus: Float? = null,
-    val maxOxygenBonus: Float? = null,
+    var minDamage: Float? = null,
+    var maxDamage: Float? = null,
+    var minSpeed: Float? = null,
+    var maxSpeed: Float? = null,
+    var minSpeedBonus: Float? = null,
+    var maxSpeedBonus: Float? = null,
+    var minStaminaReduction: Float? = null,
+    var maxStaminaReduction: Float? = null,
+    var minHeight: Float? = null,
+    var maxHeight: Float? = null,
+    var minOxygenBonus: Float? = null,
+    var maxOxygenBonus: Float? = null,
 )
