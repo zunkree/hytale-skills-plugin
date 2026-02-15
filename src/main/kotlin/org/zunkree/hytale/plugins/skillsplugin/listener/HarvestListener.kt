@@ -19,16 +19,27 @@ class HarvestListener(
     fun onPlayerDamageBlock(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
         val ref = ctx.chunk.getReferenceTo(ctx.index)
         val blockId = ctx.event.blockType.id
-        val skillType = blockSkillResolver.resolve(blockId) ?: return
+        val skillType =
+            blockSkillResolver.resolve(blockId) ?: run {
+                logger.debug { "Harvest: block $blockId not a recognized gathering block, skipping" }
+                return
+            }
 
         val multiplier =
             when (skillType) {
                 SkillType.MINING -> actionXpConfig.miningPerBlockMultiplier
                 SkillType.WOODCUTTING -> actionXpConfig.woodcuttingPerBlockMultiplier
-                else -> return
+                else -> {
+                    logger.debug { "Harvest: skill $skillType has no configured multiplier, skipping" }
+                    return
+                }
             }
-        logger.debug { "Granting $skillType XP for block $blockId with multiplier $multiplier" }
+        val baseXp = multiplier * ctx.event.damage
+        logger.debug {
+            "Harvest XP: skill=$skillType, block=$blockId, " +
+                "damage=${ctx.event.damage}, multiplier=$multiplier, baseXp=$baseXp"
+        }
 
-        xpService.grantXpAndSave(ref, skillType, multiplier * ctx.event.damage, ctx.commandBuffer)
+        xpService.grantXpAndSave(ref, skillType, baseXp, ctx.commandBuffer)
     }
 }

@@ -1,6 +1,7 @@
 package org.zunkree.hytale.plugins.skillsplugin.xp
 
 import aster.amo.kytale.extension.componentType
+import aster.amo.kytale.extension.debug
 import aster.amo.kytale.extension.info
 import com.hypixel.hytale.component.CommandBuffer
 import com.hypixel.hytale.component.Ref
@@ -79,7 +80,10 @@ class XpService(
                 }
         val skillData = skills.getSkill(skillType)
 
-        if (skillData.level >= generalConfig.maxLevel) return null
+        if (skillData.level >= generalConfig.maxLevel) {
+            logger.debug { "XP grant skipped: $skillType already at max level ${generalConfig.maxLevel}" }
+            return null
+        }
 
         val result =
             computeXpGrant(
@@ -94,6 +98,16 @@ class XpService(
 
         skillData.level = result.newLevel
         skillData.totalXP = result.newTotalXP
+        logger.debug {
+            "XP granted: skill=$skillType, baseXp=$baseXp, " +
+                "level=${result.newLevel}, totalXP=${"%.2f".format(result.newTotalXP)}"
+        }
+        if (result.levelUp != null) {
+            logger.info {
+                "LEVEL UP: skill=${result.levelUp.skillType}, " +
+                    "${result.levelUp.oldLevel} -> ${result.levelUp.newLevel}"
+            }
+        }
         return result.levelUp
     }
 
@@ -116,7 +130,10 @@ class XpService(
         playerRef: Ref<EntityStore>,
         result: LevelUpResult,
     ) {
-        if (!generalConfig.showLevelUpNotifications) return
+        if (!generalConfig.showLevelUpNotifications) {
+            logger.debug { "Level-up notification skipped: showLevelUpNotifications=false" }
+            return
+        }
 
         val player =
             playerRef.store.getComponent(playerRef, componentType<Player>())

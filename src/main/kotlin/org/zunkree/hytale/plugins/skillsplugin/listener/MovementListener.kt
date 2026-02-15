@@ -41,6 +41,9 @@ class MovementListener(
         val currentPosition = transform.position
 
         val lastPosition = lastPositions.put(entityId, Vector3d(currentPosition))
+        if (lastPosition == null) {
+            logger.debug { "Movement: first position set for ${playerRef.username}" }
+        }
         val distance = lastPosition?.let { currentPosition.distanceTo(it) } ?: 0.0
         val wasJumping = prevJumping.put(entityId, movementStates.jumping) ?: false
 
@@ -58,8 +61,17 @@ class MovementListener(
                 deltaTime = ctx.deltaTime.toDouble(),
             )
 
+        if (grants.isEmpty() && distance > 0.01) {
+            logger.debug {
+                "Movement: no grants for ${playerRef.username}, " +
+                    "distance=${"%.3f".format(distance)}, idle=${movementStates.idle}"
+            }
+        }
         for (grant in grants) {
-            logger.debug { "Player ${playerRef.username} granted ${grant.skillType} XP: ${grant.baseXp}" }
+            logger.debug {
+                "Movement XP: player=${playerRef.username}, skill=${grant.skillType}, " +
+                    "baseXp=${"%.4f".format(grant.baseXp)}, distance=${"%.3f".format(distance)}"
+            }
             xpService.grantXpAndSave(ref, grant.skillType, grant.baseXp, ctx.commandBuffer)
         }
     }
@@ -68,5 +80,6 @@ class MovementListener(
         val uuid = event.playerRef.uuid
         lastPositions.remove(uuid)
         prevJumping.remove(uuid)
+        logger.debug { "Movement: cleared position tracking for ${event.playerRef.username}" }
     }
 }

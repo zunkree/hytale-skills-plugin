@@ -272,7 +272,7 @@ Both are custom `DamageEventSystem` subclasses registered directly, avoiding Hex
 
 ### Blocking Internals (from HytaleServer.jar decompilation)
 
-| Class | Role |
+| Class | Role |`
 |-------|------|
 | `WieldingInteraction` | Config-driven (BSON asset): `damageModifiers: Int2FloatMap`, `knockbackModifiers: Int2DoubleMap`, `angledWielding`, `staminaCost`, `blockedEffects` |
 | `WieldingInteraction.AngledWielding` | Directional blocking — `DamageModifiers` are all 0 (all-or-nothing), 180° frontal cone (`Angle: 0, AngleDistance: 90`) |

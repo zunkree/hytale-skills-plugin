@@ -17,8 +17,16 @@ class GatheringEffectApplier(
     fun modifyBlockDamage(ctx: EntityEventContext<EntityStore, DamageBlockEvent>) {
         val ref = ctx.chunk.getReferenceTo(ctx.index)
         val blockType = ctx.event.blockType.id
-        val skillType = blockSkillResolver.resolve(blockType) ?: return
-        val level = skillRepository.getSkillLevel(ref, skillType) ?: return
+        val skillType =
+            blockSkillResolver.resolve(blockType) ?: run {
+                logger.debug { "GatheringEffect: block $blockType not recognized, no speed bonus" }
+                return
+            }
+        val level =
+            skillRepository.getSkillLevel(ref, skillType) ?: run {
+                logger.debug { "GatheringEffect: no skill data for $skillType, no speed bonus" }
+                return
+            }
         val multiplier = effectCalculator.getGatheringSpeedMultiplier(skillType, level)
         logger.debug { "Gathering damage modified: $skillType lv$level, multiplier=$multiplier" }
         ctx.event.damage *= multiplier.toFloat()
