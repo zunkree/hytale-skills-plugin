@@ -1,6 +1,6 @@
 {
     "Group": "${group}",
-    "Name": "skillsplugin",
+    "Name": "skills",
     "Version": "${version}",
     "Main": "${main}",
     "Description": "${description}",

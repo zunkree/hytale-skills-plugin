@@ -33,6 +33,7 @@ import org.zunkree.hytale.plugins.skillsplugin.system.MovementTickSystem
 import org.zunkree.hytale.plugins.skillsplugin.system.SkillEffectDamageSystem
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpCurve
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
+import java.nio.file.Files
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,6 +49,11 @@ class PluginApplication(
         val version = plugin.manifest.version.toString()
         logger.info { "HytaleSkills v$version loading..." }
 
+        val configPath = plugin.dataDirectory.resolve("config.json")
+        if (!Files.exists(configPath)) {
+            logger.info { "Config not found, writing defaults." }
+            plugin.configRef.save().join()
+        }
         val config: SkillsConfig = plugin.configRef.load().join()
         SkillsConfigValidator.validate(config)
         logConfigSummary(config)
@@ -94,6 +100,7 @@ class PluginApplication(
             activePlayers,
             skillRepository,
             xpCurve,
+            xpService,
             combatListener,
             harvestListener,
             blockingListener,
@@ -116,6 +123,7 @@ class PluginApplication(
             s.playerLifecycleListener.onPlayerDisconnect(event)
             movementListener.onPlayerDisconnect(event)
             movementEffectApplier.onPlayerDisconnect(event.playerRef.uuid)
+            s.xpService.onPlayerDisconnect(event.playerRef.uuid)
         }
 
         val log = plugin.logger
@@ -183,6 +191,7 @@ private class ServiceGraph(
     val activePlayers: ConcurrentHashMap<UUID, Ref<EntityStore>>,
     val skillRepository: SkillRepository,
     val xpCurve: XpCurve,
+    val xpService: XpService,
     val combatListener: CombatListener,
     val harvestListener: HarvestListener,
     val blockingListener: BlockingListener,
