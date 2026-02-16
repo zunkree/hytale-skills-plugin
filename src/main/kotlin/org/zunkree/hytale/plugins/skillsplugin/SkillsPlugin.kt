@@ -8,7 +8,7 @@ import org.zunkree.hytale.plugins.skillsplugin.config.SkillsConfigCodec
 class SkillsPlugin(
     init: JavaPluginInit,
 ) : JavaPlugin(init) {
-    val configRef = withConfig("skills", SkillsConfigCodec.CODEC)
+    val configRef = withConfig("config", SkillsConfigCodec.CODEC)
 
     private lateinit var app: PluginApplication
 
