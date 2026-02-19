@@ -78,8 +78,6 @@ class MovementEffectApplier(
             movementManager.settings.baseSpeed =
                 movementManager.settings.baseSpeed / prevMultiplier * newMultiplier
             lastSpeedMultiplier[playerUuid] = newMultiplier
-        } else if (speedSkill != null) {
-            logger.debug { "Speed effect: $speedSkill unchanged, multiplier=$prevMultiplier" }
         }
     }
 
@@ -103,8 +101,6 @@ class MovementEffectApplier(
             movementManager.settings.jumpForce =
                 movementManager.settings.jumpForce / prevMultiplier * newMultiplier
             lastJumpMultiplier[playerUuid] = newMultiplier
-        } else if (jumpingLevel > 0) {
-            logger.debug { "Jump effect: lv$jumpingLevel unchanged, multiplier=$prevMultiplier" }
         }
     }
 }

@@ -28,7 +28,13 @@ data class SkillsConfig(
                         minStaminaReduction = 0.0f,
                         maxStaminaReduction = 0.33f,
                     ),
-                SkillType.SWIMMING to SkillEffectEntry(minSpeedBonus = 0.0f, maxSpeedBonus = 0.25f),
+                SkillType.SWIMMING to
+                    SkillEffectEntry(
+                        minSpeedBonus = 0.0f,
+                        maxSpeedBonus = 0.25f,
+                        minStaminaReduction = 0.0f,
+                        maxStaminaReduction = 0.33f,
+                    ),
                 SkillType.DIVING to SkillEffectEntry(minOxygenBonus = 0.0f, maxOxygenBonus = 1.0f),
                 SkillType.SNEAKING to SkillEffectEntry(minStaminaReduction = 0.0f, maxStaminaReduction = 0.75f),
                 SkillType.JUMPING to SkillEffectEntry(minHeight = 1.0f, maxHeight = 1.5f),

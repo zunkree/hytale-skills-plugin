@@ -12,12 +12,11 @@ class MovementXpPolicy(
     private val actionXpConfig: ActionXpConfig,
 ) {
     fun calculateGrants(
-        isRunning: Boolean,
         isSprinting: Boolean,
         isSwimming: Boolean,
         isJumping: Boolean,
         wasJumping: Boolean,
-        isInFluid: Boolean,
+        isDiving: Boolean,
         isCrouching: Boolean,
         isIdle: Boolean,
         distance: Double,
@@ -25,11 +24,11 @@ class MovementXpPolicy(
     ): List<MovementXpGrant> {
         val grants = mutableListOf<MovementXpGrant>()
 
-        if ((isRunning || isSprinting) && distance > 0) {
+        if (isSprinting && !isSwimming && distance > 0) {
             grants += MovementXpGrant(SkillType.RUNNING, distance * actionXpConfig.runningPerDistanceMultiplier)
         }
 
-        if (isSwimming && distance > 0) {
+        if (isSwimming && isSprinting && distance > 0) {
             grants += MovementXpGrant(SkillType.SWIMMING, distance * actionXpConfig.swimmingPerDistanceMultiplier)
         }
 
@@ -37,7 +36,7 @@ class MovementXpPolicy(
             grants += MovementXpGrant(SkillType.JUMPING, actionXpConfig.jumpingPerJumpMultiplier)
         }
 
-        if (isInFluid) {
+        if (isDiving) {
             grants += MovementXpGrant(SkillType.DIVING, actionXpConfig.divingPerSecondMultiplier * deltaTime)
         }
 

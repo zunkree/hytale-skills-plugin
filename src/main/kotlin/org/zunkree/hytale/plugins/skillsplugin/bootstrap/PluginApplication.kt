@@ -123,6 +123,7 @@ class PluginApplication(
             s.playerLifecycleListener.onPlayerDisconnect(event)
             movementListener.onPlayerDisconnect(event)
             movementEffectApplier.onPlayerDisconnect(event.playerRef.uuid)
+            s.statEffectApplier.onPlayerDisconnect(event.playerRef.uuid)
             s.xpService.onPlayerDisconnect(event.playerRef.uuid)
         }
 

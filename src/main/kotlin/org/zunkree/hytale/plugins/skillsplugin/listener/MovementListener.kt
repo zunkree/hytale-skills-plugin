@@ -11,7 +11,9 @@ import com.hypixel.hytale.server.core.modules.entity.component.TransformComponen
 import com.hypixel.hytale.server.core.universe.PlayerRef
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore
 import org.zunkree.hytale.plugins.skillsplugin.extension.debug
+import org.zunkree.hytale.plugins.skillsplugin.extension.isSubmerged
 import org.zunkree.hytale.plugins.skillsplugin.resolver.MovementXpPolicy
+import org.zunkree.hytale.plugins.skillsplugin.skill.SkillType
 import org.zunkree.hytale.plugins.skillsplugin.xp.XpService
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -31,6 +33,8 @@ class MovementListener(
 ) {
     private val lastPositions = ConcurrentHashMap<UUID, Vector3d>()
     private val prevJumping = ConcurrentHashMap<UUID, Boolean>()
+    private val activeGrants = ConcurrentHashMap<UUID, MutableSet<SkillType>>()
+    private val accumulatedXp = ConcurrentHashMap<Pair<UUID, SkillType>, Double>()
 
     fun onTick(
         index: Int,
@@ -58,29 +62,35 @@ class MovementListener(
 
         val grants =
             movementXpPolicy.calculateGrants(
-                isRunning = movementStates.running,
                 isSprinting = movementStates.sprinting,
                 isSwimming = movementStates.swimming,
                 isJumping = movementStates.jumping,
                 wasJumping = wasJumping,
-                isInFluid = movementStates.inFluid,
+                isDiving = movementStates.inFluid && isSubmerged(ref, store),
                 isCrouching = movementStates.crouching,
                 isIdle = movementStates.idle,
                 distance = distance,
                 deltaTime = deltaTime.toDouble(),
             )
 
-        if (grants.isEmpty() && distance > 0.01) {
+        val currentSkills = grants.map { it.skillType }.toSet()
+        val previousSkills = activeGrants[entityId] ?: emptySet()
+
+        for (skill in currentSkills - previousSkills) {
+            logger.debug { "Movement XP started: $skill for ${playerRef.username}" }
+        }
+        for (skill in previousSkills - currentSkills) {
+            val total = accumulatedXp.remove(entityId to skill) ?: 0.0
             logger.debug {
-                "Movement: no grants for ${playerRef.username}, " +
-                    "distance=${"%.3f".format(distance)}, idle=${movementStates.idle}"
+                "Movement XP ended: $skill for ${playerRef.username}, " +
+                    "total=+${"%.1f".format(total)} XP"
             }
         }
+
+        activeGrants[entityId] = currentSkills.toMutableSet()
+
         for (grant in grants) {
-            logger.debug {
-                "Movement XP: player=${playerRef.username}, skill=${grant.skillType}, " +
-                    "baseXp=${"%.4f".format(grant.baseXp)}, distance=${"%.3f".format(distance)}"
-            }
+            accumulatedXp.merge(entityId to grant.skillType, grant.baseXp) { a, b -> a + b }
             xpService.grantXpAndSave(ref, grant.skillType, grant.baseXp, commandBuffer)
         }
     }
@@ -89,6 +99,8 @@ class MovementListener(
         val uuid = event.playerRef.uuid
         lastPositions.remove(uuid)
         prevJumping.remove(uuid)
-        logger.debug { "Movement: cleared position tracking for ${event.playerRef.username}" }
+        activeGrants.remove(uuid)
+        accumulatedXp.keys.removeIf { it.first == uuid }
+        logger.debug { "Movement: cleared state for ${event.playerRef.username}" }
     }
 }
